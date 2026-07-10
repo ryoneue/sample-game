@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <title>Marble Maze — Tilt & Roll</title>
+  <!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║  MARBLE MAZE — Top-down ball-rolling maze (single HTML file)     ║
+  ╠══════════════════════════════════════════════════════════════════╣
+  ║  HOW TO HOST ON GITHUB PAGES                                     ║
+  ║  1. Create a new GitHub repo (or use an existing one).           ║
+  ║  2. Upload this file as index.html (rename if you like).         ║
+  ║  3. Repo Settings → Pages → Source: main branch / root.          ║
+  ║  4. Visit https://YOURUSER.github.io/YOURREPO/                   ║
+  ║                                                                  ║
+  ║  HOW TO PLAY                                                     ║
+  ║  • Phone: tilt the device to roll the marble.                    ║
+  ║  • Touch / mouse: drag on the board to push the ball.            ║
+  ║  • Avoid dark holes (they reset you). Reach the glowing goal!    ║
+  ║  • Try shortcuts, bounces, and risky routes — experiment!        ║
+  ║                                                                  ║
+  ║  EXTENDING                                                       ║
+  ║  • Edit LEVELS below to add walls/holes/start/goal.              ║
+  ║  • Tweak PHYSICS constants for weight, friction, tilt strength.  ║
+  ╚══════════════════════════════════════════════════════════════════╝
+  -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f0f1a;
+      --panel: #1a1a2e;
+      --accent: #4ecdc4;
+      --accent2: #ff6b6b;
+      --gold: #ffd93d;
+      --text: #f0f0f5;
+      --muted: #8b8ba3;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: var(--safe-top) 0 var(--safe-bottom);
+    }
+
+    /* ── HUD ─────────────────────────────────────────── */
+    #hud {
+      position: absolute;
+      top: calc(8px + var(--safe-top));
+      left: 0;
+      right: 0;
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 12px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    #hud.visible { display: flex; }
+
+    .hud-pill {
+      background: rgba(26, 26, 46, 0.88);
+      border: 1px solid rgba(78, 205, 196, 0.35);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+      pointer-events: auto;
+    }
+
+    #timer { color: var(--accent); min-width: 88px; text-align: center; font-variant-numeric: tabular-nums; }
+    #best-time { color: var(--gold); font-size: 12px; margin-left: 6px; opacity: 0.9; }
+
+    #btn-reset {
+      background: rgba(255, 107, 107, 0.2);
+      border: 1px solid rgba(255, 107, 107, 0.5);
+      color: #ffb4b4;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      pointer-events: auto;
+      min-height: 44px; /* easy tap target */
+    }
+
+    #btn-reset:active { transform: scale(0.96); background: rgba(255, 107, 107, 0.35); }
+
+    /* ── Canvas wrapper ──────────────────────────────── */
+    #canvas-wrap {
+      position: relative;
+      width: min(100vw, 100vh * 0.72, 520px);
+      max-width: 100%;
+      aspect-ratio: 9 / 14;
+      max-height: calc(100vh - 24px - var(--safe-top) - var(--safe-bottom));
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 3px rgba(78, 205, 196, 0.25),
+        0 20px 50px rgba(0, 0, 0, 0.55);
+      background: #16213e;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    canvas:active { cursor: grabbing; }
+
+    /* ── Overlays (start / win) ──────────────────────── */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px 20px;
+      background: radial-gradient(ellipse at center, rgba(22, 33, 62, 0.94) 0%, rgba(15, 15, 26, 0.97) 100%);
+      z-index: 20;
+      transition: opacity 0.35s ease, visibility 0.35s ease;
+    }
+
+    .overlay.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .overlay h1 {
+      font-size: clamp(1.75rem, 6vw, 2.4rem);
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #4ecdc4, #ffd93d);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      letter-spacing: -0.02em;
+    }
+
+    .overlay .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 20px;
+      line-height: 1.5;
+      max-width: 280px;
+    }
+
+    .instructions {
+      list-style: none;
+      text-align: left;
+      margin: 0 auto 24px;
+      max-width: 280px;
+      font-size: 0.9rem;
+      line-height: 1.7;
+      color: var(--text);
+    }
+
+    .instructions li::before {
+      content: "• ";
+      color: var(--accent);
+      font-weight: bold;
+    }
+
+    .btn-primary {
+      appearance: none;
+      border: none;
+      background: linear-gradient(135deg, #4ecdc4, #2a9d8f);
+      color: #0f0f1a;
+      font-weight: 800;
+      font-size: 1.05rem;
+      padding: 14px 36px;
+      border-radius: 999px;
+      cursor: pointer;
+      min-height: 48px;
+      min-width: 160px;
+      box-shadow: 0 6px 24px rgba(78, 205, 196, 0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .btn-primary:active {
+      transform: scale(0.97);
+      box-shadow: 0 3px 12px rgba(78, 205, 196, 0.3);
+    }
+
+    .btn-secondary {
+      appearance: none;
+      border: 1px solid rgba(78, 205, 196, 0.45);
+      background: transparent;
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 10px 22px;
+      border-radius: 999px;
+      cursor: pointer;
+      margin-top: 12px;
+      min-height: 44px;
+    }
+
+    .hint {
+      margin-top: 16px;
+      font-size: 0.75rem;
+      color: var(--muted);
+      max-width: 260px;
+      line-height: 1.4;
+    }
+
+    #win-time {
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--gold);
+      margin: 8px 0 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    #win-best {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+    }
+
+    .confetti-bit {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      pointer-events: none;
+      animation: confetti-fall 1.4s ease-out forwards;
+    }
+
+    @keyframes confetti-fall {
+      0%   { transform: translateY(0) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(120px) rotate(360deg); opacity: 0; }
+    }
+
+    #tilt-status {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 10px;
+      min-height: 1.2em;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="hud">
+      <div class="hud-pill">
+        <span id="timer">0.00s</span>
+        <span id="best-time"></span>
+      </div>
+      <button type="button" id="btn-reset" aria-label="Reset ball">Reset</button>
+    </div>
+
+    <div id="canvas-wrap">
+      <canvas id="game"></canvas>
+
+      <!-- Start screen -->
+      <div id="start-screen" class="overlay">
+        <h1>Marble Maze</h1>
+        <p class="subtitle">Tilt your phone to roll the ball to the goal. Experiment — clever paths welcome!</p>
+        <ul class="instructions">
+          <li>Phone: tilt to roll</li>
+          <li>Touch / mouse: drag to push</li>
+          <li>Dark holes reset you</li>
+          <li>Reach the glowing goal ★</li>
+        </ul>
+        <button type="button" class="btn-primary" id="btn-start">Play</button>
+        <button type="button" class="btn-secondary" id="btn-tilt" style="display:none;">Enable Tilt</button>
+        <p id="tilt-status"></p>
+        <p class="hint">Works best fullscreen on your phone. Best time is saved on this device.</p>
+      </div>
+
+      <!-- Win screen -->
+      <div id="win-screen" class="overlay hidden">
+        <h1>You did it!</h1>
+        <div id="win-time">0.00s</div>
+        <div id="win-best"></div>
+        <button type="button" class="btn-primary" id="btn-again">Play Again</button>
+        <p class="hint">Try a faster route or a wild bounce next time.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  /**
+   * Marble Maze — Matter.js top-down tilt maze
+   * Modular structure so beginners can tweak physics and levels easily.
+   */
+  (function () {
+    'use strict';
+
+    // ═══════════════════════════════════════════════════
+    //  PHYSICS TUNING — change these for different feel
+    // ═══════════════════════════════════════════════════
+    const PHYSICS = {
+      gravityScale: 0.00115,   // base gravity multiplier for tilt (feels weighty)
+      tiltMax: 0.9,            // clamp device tilt influence
+      dragForce: 0.00055,      // mouse/touch push strength
+      ballRestitution: 0.45,   // bounciness (0–1)
+      ballFriction: 0.02,      // surface friction
+      ballFrictionAir: 0.012,  // air drag so it settles naturally
+      ballDensity: 0.004,      // mass feel
+      wallRestitution: 0.35,
+      wallFriction: 0.15,
+    };
+
+    // ═══════════════════════════════════════════════════
+    //  LEVEL DATA (normalized 0–1 coords within playfield)
+    //  Easy to add levels: copy this object and swap walls/holes.
+    //  wall: { x, y, w, h }  — center + size in 0–1 space
+    //  hole: { x, y, r }
+    //  start / goal: { x, y }
+    // ═══════════════════════════════════════════════════
+    const LEVELS = [
+      {
+        name: 'Playground',
+        // Open center with islands of walls — multiple routes, shortcuts, bounce plays
+        walls: [
+          // Border walls are added in code; these are internal obstacles
+          { x: 0.28, y: 0.22, w: 0.36, h: 0.05 },   // top bar (gap on right)
+          { x: 0.72, y: 0.22, w: 0.18, h: 0.05 },
+
+          { x: 0.18, y: 0.38, w: 0.06, h: 0.22 },   // left pillar
+          { x: 0.45, y: 0.42, w: 0.22, h: 0.05 },   // floating island
+          { x: 0.78, y: 0.40, w: 0.06, h: 0.28 },   // right tall wall (gap above/below)
+
+          { x: 0.32, y: 0.58, w: 0.28, h: 0.05 },   // mid bridge with side gaps
+          { x: 0.58, y: 0.58, w: 0.08, h: 0.05 },
+
+          { x: 0.22, y: 0.72, w: 0.05, h: 0.18 },   // lower left block
+          { x: 0.50, y: 0.78, w: 0.30, h: 0.05 },   // lower shelf (gap left of goal path)
+          { x: 0.78, y: 0.68, w: 0.18, h: 0.05 },   // right shelf
+
+          { x: 0.42, y: 0.32, w: 0.05, h: 0.12 },   // small vertical baffle
+        ],
+        holes: [
+          { x: 0.50, y: 0.30, r: 0.045 },  // near top island — risky mid path
+          { x: 0.32, y: 0.48, r: 0.042 },  // left of bridge
+          { x: 0.62, y: 0.48, r: 0.040 },  // right shortcut danger
+          { x: 0.45, y: 0.68, r: 0.048 },  // lower center trap
+          { x: 0.70, y: 0.82, r: 0.040 },  // near goal — last scare
+        ],
+        start: { x: 0.18, y: 0.12 },
+        goal:  { x: 0.82, y: 0.88, r: 0.055 },
+      },
+    ];
+
+    // ═══════════════════════════════════════════════════
+    //  DOM
+    // ═══════════════════════════════════════════════════
+    const canvas = document.getElementById('game');
+    const wrap = document.getElementById('canvas-wrap');
+    const hud = document.getElementById('hud');
+    const timerEl = document.getElementById('timer');
+    const bestEl = document.getElementById('best-time');
+    const startScreen = document.getElementById('start-screen');
+    const winScreen = document.getElementById('win-screen');
+    const winTimeEl = document.getElementById('win-time');
+    const winBestEl = document.getElementById('win-best');
+    const tiltStatus = document.getElementById('tilt-status');
+    const btnStart = document.getElementById('btn-start');
+    const btnTilt = document.getElementById('btn-tilt');
+    const btnAgain = document.getElementById('btn-again');
+    const btnReset = document.getElementById('btn-reset');
+
+    const STORAGE_KEY = 'marble-maze-best-v1';
+
+    // ═══════════════════════════════════════════════════
+    //  MATTER.JS ALIASES
+    // ═══════════════════════════════════════════════════
+    const { Engine, World, Bodies, Body, Events, Composite } = Matter;
+
+    // ═══════════════════════════════════════════════════
+    //  GAME STATE
+    // ═══════════════════════════════════════════════════
+    let engine, world;
+    let ball, walls = [], holes = [], goalBody = null;
+    let level = LEVELS[0];
+    let W = 0, H = 0, scale = 1, wallThick = 18;
+    let ballRadius = 12;
+
+    let running = false;
+    let won = false;
+    let startTime = 0;
+    let elapsed = 0;
+    let bestTime = loadBest();
+
+    // Input
+    let tiltEnabled = false;
+    let tiltBeta = 0;   // front-back
+    let tiltGamma = 0;  // left-right
+    let pointerDown = false;
+    let pointerX = 0, pointerY = 0;
+    let lastPointerX = 0, lastPointerY = 0;
+
+    // Visual FX
+    let goalPulse = 0;
+    let winParticles = [];
+    let shake = 0;
+
+    // ═══════════════════════════════════════════════════
+    //  UTIL
+    // ═══════════════════════════════════════════════════
+    function loadBest() {
+      try {
+        const v = localStorage.getItem(STORAGE_KEY);
+        return v ? parseFloat(v) : null;
+      } catch (_) { return null; }
+    }
+
+    function saveBest(t) {
+      try { localStorage.setItem(STORAGE_KEY, String(t)); } catch (_) {}
+    }
+
+    function formatTime(t) {
+      return t.toFixed(2) + 's';
+    }
+
+    function updateBestDisplay() {
+      bestEl.textContent = bestTime != null ? 'Best ' + formatTime(bestTime) : '';
+    }
+
+    function nX(v) { return v * W; }
+    function nY(v) { return v * H; }
+
+    // ═══════════════════════════════════════════════════
+    //  LAYOUT / RESIZE
+    // ═══════════════════════════════════════════════════
+    function resize() {
+      const rect = wrap.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      W = Math.floor(rect.width);
+      H = Math.floor(rect.height);
+      canvas.width = Math.floor(W * dpr);
+      canvas.height = Math.floor(H * dpr);
+      canvas.style.width = W + 'px';
+      canvas.style.height = H + 'px';
+
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Scale-dependent sizes
+      scale = Math.min(W, H) / 360;
+      wallThick = Math.max(14, 16 * scale);
+      ballRadius = Math.max(10, 12 * scale);
+
+      // Rebuild physics world to match new pixel sizes
+      if (engine) rebuildWorld(false);
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  WORLD BUILD
+    // ═══════════════════════════════════════════════════
+    function clearWorld() {
+      if (!world) return;
+      Composite.clear(world, false);
+      walls = [];
+      holes = [];
+      ball = null;
+      goalBody = null;
+    }
+
+    function makeWall(cx, cy, w, h) {
+      return Bodies.rectangle(cx, cy, w, h, {
+        isStatic: true,
+        restitution: PHYSICS.wallRestitution,
+        friction: PHYSICS.wallFriction,
+        label: 'wall',
+        chamfer: { radius: Math.min(6, Math.min(w, h) * 0.15) },
+      });
+    }
+
+    function rebuildWorld(resetTimer) {
+      clearWorld();
+      if (!engine) {
+        engine = Engine.create({
+          gravity: { x: 0, y: 0 }, // gravity driven by tilt / drag
+          enableSleeping: false,
+        });
+        world = engine.world;
+      }
+
+      const bodies = [];
+
+      // Outer border (thick so ball can't escape)
+      const t = wallThick;
+      bodies.push(makeWall(W / 2, t / 2, W, t));           // top
+      bodies.push(makeWall(W / 2, H - t / 2, W, t));       // bottom
+      bodies.push(makeWall(t / 2, H / 2, t, H));           // left
+      bodies.push(makeWall(W - t / 2, H / 2, t, H));       // right
+
+      // Internal walls from level data
+      level.walls.forEach((w) => {
+        const body = makeWall(nX(w.x), nY(w.y), nX(w.w), nY(w.h));
+        walls.push(body);
+        bodies.push(body);
+      });
+
+      // Holes are sensor-like: we check distance each frame (no physics body needed)
+      holes = level.holes.map((h) => ({
+        x: nX(h.x),
+        y: nY(h.y),
+        r: Math.max(10, nX(h.r)),
+      }));
+
+      // Goal sensor (static, non-colliding visual body optional)
+      const gx = nX(level.goal.x);
+      const gy = nY(level.goal.y);
+      const gr = Math.max(14, nX(level.goal.r));
+      goalBody = { x: gx, y: gy, r: gr };
+
+      // Ball — Matter.js computes mass/inertia from density + radius
+      const sx = nX(level.start.x);
+      const sy = nY(level.start.y);
+      ball = Bodies.circle(sx, sy, ballRadius, {
+        restitution: PHYSICS.ballRestitution,
+        friction: PHYSICS.ballFriction,
+        frictionAir: PHYSICS.ballFrictionAir,
+        density: PHYSICS.ballDensity,
+        label: 'ball',
+        frictionStatic: 0.01,
+      });
+
+      bodies.push(ball);
+      World.add(world, bodies);
+
+      if (resetTimer) {
+        elapsed = 0;
+        startTime = performance.now();
+        won = false;
+      }
+    }
+
+    function resetBall() {
+      if (!ball) return;
+      const sx = nX(level.start.x);
+      const sy = nY(level.start.y);
+      Body.setPosition(ball, { x: sx, y: sy });
+      Body.setVelocity(ball, { x: 0, y: 0 });
+      Body.setAngularVelocity(ball, 0);
+      shake = 6;
+    }
+
+    function fullReset() {
+      won = false;
+      winScreen.classList.add('hidden');
+      elapsed = 0;
+      startTime = performance.now();
+      rebuildWorld(true);
+      running = true;
+      hud.classList.add('visible');
+      updateBestDisplay();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  CONTROLS — tilt / touch / mouse
+    // ═══════════════════════════════════════════════════
+    function applyOrientation(event) {
+      // beta: -180..180 (front-back), gamma: -90..90 (left-right)
+      if (event.beta != null) tiltBeta = event.beta;
+      if (event.gamma != null) tiltGamma = event.gamma;
+    }
+
+    async function requestTiltPermission() {
+      // iOS 13+ requires permission
+      if (typeof DeviceOrientationEvent !== 'undefined' &&
+          typeof DeviceOrientationEvent.requestPermission === 'function') {
+        try {
+          const state = await DeviceOrientationEvent.requestPermission();
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', applyOrientation, true);
+            tiltEnabled = true;
+            tiltStatus.textContent = 'Tilt enabled — tilt your phone!';
+            btnTilt.style.display = 'none';
+            return true;
+          }
+          tiltStatus.textContent = 'Tilt permission denied — use drag instead.';
+          return false;
+        } catch (e) {
+          tiltStatus.textContent = 'Tilt unavailable — drag to play.';
+          return false;
+        }
+      }
+      // Non-iOS: just listen
+      if (typeof DeviceOrientationEvent !== 'undefined') {
+        window.addEventListener('deviceorientation', applyOrientation, true);
+        tiltEnabled = true;
+        tiltStatus.textContent = 'Tilt ready (if your device supports it).';
+        return true;
+      }
+      tiltStatus.textContent = 'No tilt sensor — drag to play.';
+      return false;
+    }
+
+    function setupPointer() {
+      const toLocal = (e) => {
+        const r = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+          x: clientX - r.left,
+          y: clientY - r.top,
+        };
+      };
+
+      const onDown = (e) => {
+        if (!running || won) return;
+        e.preventDefault();
+        pointerDown = true;
+        const p = toLocal(e);
+        pointerX = lastPointerX = p.x;
+        pointerY = lastPointerY = p.y;
+      };
+
+      const onMove = (e) => {
+        if (!pointerDown) return;
+        e.preventDefault();
+        const p = toLocal(e);
+        pointerX = p.x;
+        pointerY = p.y;
+      };
+
+      const onUp = (e) => {
+        pointerDown = false;
+      };
+
+      canvas.addEventListener('mousedown', onDown);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+
+      canvas.addEventListener('touchstart', onDown, { passive: false });
+      canvas.addEventListener('touchmove', onMove, { passive: false });
+      canvas.addEventListener('touchend', onUp);
+      canvas.addEventListener('touchcancel', onUp);
+    }
+
+    function applyForces() {
+      if (!ball || !running || won) return;
+
+      let fx = 0, fy = 0;
+      // Force scale relative to mass so feel stays consistent if density changes
+      const m = ball.mass;
+
+      // Device tilt → gravity (phone held roughly flat / slight upright)
+      if (tiltEnabled) {
+        // gamma: left (−) / right (+); beta: back (−) / forward (+)
+        // Subtract a comfortable "neutral" pitch so flat-ish hold ≈ zero force
+        const neutralBeta = 35;
+        let gx = clamp(tiltGamma / 30, -PHYSICS.tiltMax, PHYSICS.tiltMax);
+        let gy = clamp((tiltBeta - neutralBeta) / 30, -PHYSICS.tiltMax, PHYSICS.tiltMax);
+
+        // Dead-zone so tiny hand jitter doesn't keep the ball crawling
+        if (Math.abs(gx) < 0.06) gx = 0;
+        if (Math.abs(gy) < 0.06) gy = 0;
+
+        const g = PHYSICS.gravityScale * m * 1000;
+        fx += gx * g;
+        fy += gy * g;
+      }
+
+      // Drag / mouse: pull the marble toward the finger (intuitive on touch)
+      if (pointerDown) {
+        const dx = pointerX - ball.position.x;
+        const dy = pointerY - ball.position.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const strength = PHYSICS.dragForce * m * 1000;
+        const pull = Math.min(dist / (70 * scale), 1.5);
+        fx += (dx / dist) * strength * pull;
+        fy += (dy / dist) * strength * pull;
+      }
+
+      if (fx !== 0 || fy !== 0) {
+        Body.applyForce(ball, ball.position, { x: fx, y: fy });
+      }
+    }
+
+    function clamp(v, lo, hi) {
+      return Math.max(lo, Math.min(hi, v));
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  GAME LOGIC (holes, goal)
+    // ═══════════════════════════════════════════════════
+    function checkHolesAndGoal() {
+      if (!ball || won) return;
+      const bx = ball.position.x;
+      const by = ball.position.y;
+
+      // Fall into hole if center is well inside
+      for (let i = 0; i < holes.length; i++) {
+        const h = holes[i];
+        const d = Math.hypot(bx - h.x, by - h.y);
+        if (d < h.r * 0.72) {
+          // Fall animation cue + reset
+          resetBall();
+          return;
+        }
+      }
+
+      // Goal
+      const g = goalBody;
+      if (g) {
+        const d = Math.hypot(bx - g.x, by - g.y);
+        if (d < g.r * 0.85) {
+          onWin();
+        }
+      }
+    }
+
+    function onWin() {
+      if (won) return;
+      won = true;
+      running = false;
+      elapsed = (performance.now() - startTime) / 1000;
+
+      let isNewBest = false;
+      if (bestTime == null || elapsed < bestTime) {
+        bestTime = elapsed;
+        saveBest(bestTime);
+        isNewBest = true;
+      }
+
+      winTimeEl.textContent = formatTime(elapsed);
+      winBestEl.textContent = isNewBest
+        ? '★ New best time!'
+        : (bestTime != null ? 'Best: ' + formatTime(bestTime) : '');
+      updateBestDisplay();
+
+      spawnConfetti();
+      winScreen.classList.remove('hidden');
+      hud.classList.remove('visible');
+    }
+
+    function spawnConfetti() {
+      // DOM confetti for celebration
+      const colors = ['#4ecdc4', '#ffd93d', '#ff6b6b', '#a78bfa', '#f472b6'];
+      for (let i = 0; i < 28; i++) {
+        const el = document.createElement('div');
+        el.className = 'confetti-bit';
+        el.style.left = (20 + Math.random() * 60) + '%';
+        el.style.top = (25 + Math.random() * 30) + '%';
+        el.style.background = colors[i % colors.length];
+        el.style.animationDelay = (Math.random() * 0.3) + 's';
+        el.style.transform = 'rotate(' + (Math.random() * 360) + 'deg)';
+        winScreen.appendChild(el);
+        setTimeout(() => el.remove(), 1600);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  RENDER
+    // ═══════════════════════════════════════════════════
+    function draw() {
+      const ctx = canvas.getContext('2d');
+      const shakeX = shake > 0 ? (Math.random() - 0.5) * shake : 0;
+      const shakeY = shake > 0 ? (Math.random() - 0.5) * shake : 0;
+      if (shake > 0) shake *= 0.85;
+      if (shake < 0.3) shake = 0;
+
+      ctx.save();
+      ctx.translate(shakeX, shakeY);
+
+      // Board background
+      const bg = ctx.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#1a2744');
+      bg.addColorStop(1, '#121a2e');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // Subtle grid for depth
+      ctx.strokeStyle = 'rgba(78, 205, 196, 0.04)';
+      ctx.lineWidth = 1;
+      const grid = 28 * scale;
+      for (let x = 0; x < W; x += grid) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+      for (let y = 0; y < H; y += grid) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+
+      // Holes
+      holes.forEach((h) => drawHole(ctx, h));
+
+      // Goal
+      if (goalBody) drawGoal(ctx, goalBody);
+
+      // Walls
+      const allWalls = Composite.allBodies(world).filter((b) => b.label === 'wall');
+      allWalls.forEach((w) => drawWall(ctx, w));
+
+      // Ball
+      if (ball) drawBall(ctx, ball);
+
+      // Drag indicator
+      if (pointerDown && ball && running && !won) {
+        ctx.strokeStyle = 'rgba(78, 205, 196, 0.45)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(ball.position.x, ball.position.y);
+        ctx.lineTo(pointerX, pointerY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(78, 205, 196, 0.5)';
+        ctx.beginPath();
+        ctx.arc(pointerX, pointerY, 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    function drawHole(ctx, h) {
+      // Outer rim
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, h.r + 3, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fill();
+
+      // Deep hole
+      const grad = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, h.r);
+      grad.addColorStop(0, '#050508');
+      grad.addColorStop(0.7, '#0a0a12');
+      grad.addColorStop(1, '#1a1a28');
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Soft edge ring
+      ctx.strokeStyle = 'rgba(40, 40, 60, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function drawGoal(ctx, g) {
+      goalPulse += 0.04;
+      const pulse = 1 + Math.sin(goalPulse) * 0.08;
+      const r = g.r * pulse;
+
+      // Glow
+      const glow = ctx.createRadialGradient(g.x, g.y, r * 0.2, g.x, g.y, r * 1.6);
+      glow.addColorStop(0, 'rgba(255, 217, 61, 0.45)');
+      glow.addColorStop(0.5, 'rgba(78, 205, 196, 0.2)');
+      glow.addColorStop(1, 'rgba(78, 205, 196, 0)');
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, r * 1.6, 0, Math.PI * 2);
+      ctx.fillStyle = glow;
+      ctx.fill();
+
+      // Pad
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 217, 61, 0.25)';
+      ctx.fill();
+      ctx.strokeStyle = '#ffd93d';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Star marker
+      ctx.fillStyle = '#ffd93d';
+      ctx.font = 'bold ' + Math.floor(r * 0.9) + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('★', g.x, g.y + 1);
+    }
+
+    function drawWall(ctx, body) {
+      const verts = body.vertices;
+      if (!verts || verts.length < 2) return;
+
+      ctx.beginPath();
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < verts.length; i++) {
+        ctx.lineTo(verts[i].x, verts[i].y);
+      }
+      ctx.closePath();
+
+      // Thick colorful wall
+      const grad = ctx.createLinearGradient(verts[0].x, verts[0].y, verts[2] ? verts[2].x : verts[0].x, verts[2] ? verts[2].y : verts[0].y);
+      grad.addColorStop(0, '#3d5a80');
+      grad.addColorStop(1, '#2b3a55');
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Highlight edge
+      ctx.strokeStyle = 'rgba(120, 170, 220, 0.55)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Inner shadow line
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    function drawBall(ctx, b) {
+      const x = b.position.x;
+      const y = b.position.y;
+      const r = ballRadius;
+
+      // Soft shadow
+      ctx.beginPath();
+      ctx.ellipse(x + r * 0.15, y + r * 0.35, r * 0.95, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fill();
+
+      // Marble body
+      const bodyGrad = ctx.createRadialGradient(
+        x - r * 0.35, y - r * 0.4, r * 0.1,
+        x, y, r
+      );
+      bodyGrad.addColorStop(0, '#ffffff');
+      bodyGrad.addColorStop(0.15, '#7ee8e0');
+      bodyGrad.addColorStop(0.55, '#4ecdc4');
+      bodyGrad.addColorStop(1, '#1a7a72');
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = bodyGrad;
+      ctx.fill();
+
+      // Specular highlight
+      ctx.beginPath();
+      ctx.ellipse(x - r * 0.3, y - r * 0.35, r * 0.28, r * 0.18, -0.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.fill();
+
+      // Rim
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, r - 0.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  MAIN LOOP
+    // ═══════════════════════════════════════════════════
+    let lastFrame = 0;
+
+    function loop(now) {
+      requestAnimationFrame(loop);
+
+      // Cap delta for stability (tab background, etc.)
+      const dt = Math.min(32, now - lastFrame || 16);
+      lastFrame = now;
+
+      if (running && !won && engine) {
+        applyForces();
+        // Fixed-ish step: Matter default ~60fps
+        Engine.update(engine, 1000 / 60);
+        checkHolesAndGoal();
+        elapsed = (now - startTime) / 1000;
+        timerEl.textContent = formatTime(elapsed);
+      }
+
+      if (engine) draw();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  UI EVENTS
+    // ═══════════════════════════════════════════════════
+    btnStart.addEventListener('click', async () => {
+      startScreen.classList.add('hidden');
+      // Try tilt automatically; show button if iOS needs gesture (we are in a gesture)
+      await requestTiltPermission();
+      fullReset();
+    });
+
+    btnTilt.addEventListener('click', async () => {
+      await requestTiltPermission();
+    });
+
+    btnAgain.addEventListener('click', () => {
+      fullReset();
+    });
+
+    btnReset.addEventListener('click', () => {
+      if (!running && !won) return;
+      if (won) {
+        fullReset();
+        return;
+      }
+      resetBall();
+      // Optional: don't reset timer on soft reset — keeps pressure fun
+      // Uncomment next two lines to also reset the clock:
+      // elapsed = 0;
+      // startTime = performance.now();
+    });
+
+    // Detect iOS permission API and show extra button on start if needed
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      btnTilt.style.display = 'inline-block';
+      tiltStatus.textContent = 'Tap Play (or Enable Tilt) to allow motion sensors.';
+    } else if (typeof DeviceOrientationEvent === 'undefined') {
+      tiltStatus.textContent = 'Desktop: drag on the board to roll the ball.';
+    } else {
+      tiltStatus.textContent = 'Phone tilt will activate when you press Play.';
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  BOOT
+    // ═══════════════════════════════════════════════════
+    window.addEventListener('resize', () => {
+      resize();
+    });
+
+    // Prevent pull-to-refresh / scroll on mobile while playing
+    document.body.addEventListener('touchmove', (e) => {
+      if (e.target === canvas || wrap.contains(e.target)) e.preventDefault();
+    }, { passive: false });
+
+    setupPointer();
+    resize();
+    // Draw idle board under start overlay
+    rebuildWorld(true);
+    running = false;
+    updateBestDisplay();
+    requestAnimationFrame(loop);
+
+  })();
+  </script>
+</body>
+</html>
