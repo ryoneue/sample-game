@@ -275,6 +275,61 @@
       margin-top: 10px;
       min-height: 1.2em;
     }
+
+    /* 画面上の仮想スティック（傾きが使えない端末向け） */
+    #stick-zone {
+      display: none;
+      position: absolute;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      width: 120px;
+      height: 120px;
+      z-index: 12;
+      touch-action: none;
+      pointer-events: auto;
+    }
+
+    #stick-zone.visible { display: block; }
+
+    #stick-base {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: rgba(26, 26, 46, 0.55);
+      border: 2px solid rgba(78, 205, 196, 0.45);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+
+    #stick-knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 48px;
+      height: 48px;
+      margin: -24px 0 0 -24px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #4ecdc4, #2a9d8f);
+      box-shadow: 0 2px 10px rgba(78, 205, 196, 0.5);
+      pointer-events: none;
+    }
+
+    #control-hint {
+      display: none;
+      position: absolute;
+      bottom: 148px; /* 仮想スティックの上 */
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 11px;
+      color: rgba(240, 240, 245, 0.8);
+      z-index: 11;
+      pointer-events: none;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+      padding: 0 10px;
+    }
+
+    #control-hint.visible { display: block; }
   </style>
 </head>
 <body>
@@ -284,35 +339,43 @@
         <span id="timer">0.00s</span>
         <span id="best-time"></span>
       </div>
-      <button type="button" id="btn-reset" aria-label="Reset ball">Reset</button>
+      <button type="button" id="btn-reset" aria-label="リセット">リセット</button>
     </div>
 
     <div id="canvas-wrap">
       <canvas id="game"></canvas>
 
+      <div id="control-hint">ボールの近くをドラッグ / 矢印キー / 下のスティック</div>
+
+      <!-- 仮想スティック -->
+      <div id="stick-zone" aria-label="移動スティック">
+        <div id="stick-base"></div>
+        <div id="stick-knob"></div>
+      </div>
+
       <!-- Start screen -->
       <div id="start-screen" class="overlay">
         <h1>Marble Maze</h1>
-        <p class="subtitle">Tilt your phone to roll the ball to the goal. Experiment — clever paths welcome!</p>
+        <p class="subtitle">ボールを転がしてゴールの ★ へ！近道や壁バウンドもアリです。</p>
         <ul class="instructions">
-          <li>Phone: tilt to roll</li>
-          <li>Touch / mouse: drag to push</li>
-          <li>Dark holes reset you</li>
-          <li>Reach the glowing goal ★</li>
+          <li><strong>スマホ:</strong> 端末を傾ける</li>
+          <li><strong>タッチ / マウス:</strong> 盤面をドラッグ（押し続ける）</li>
+          <li><strong>PC:</strong> 矢印キー / WASD</li>
+          <li>黒い穴に落ちるとスタートに戻る</li>
         </ul>
-        <button type="button" class="btn-primary" id="btn-start">Play</button>
-        <button type="button" class="btn-secondary" id="btn-tilt" style="display:none;">Enable Tilt</button>
+        <button type="button" class="btn-primary" id="btn-start">プレイ</button>
+        <button type="button" class="btn-secondary" id="btn-tilt" style="display:none;">傾き操作を許可</button>
         <p id="tilt-status"></p>
-        <p class="hint">Works best fullscreen on your phone. Best time is saved on this device.</p>
+        <p class="hint">スマホは傾きが一番気持ちいいです。ベストタイムはこの端末に保存されます。</p>
       </div>
 
       <!-- Win screen -->
       <div id="win-screen" class="overlay hidden">
-        <h1>You did it!</h1>
+        <h1>クリア！</h1>
         <div id="win-time">0.00s</div>
         <div id="win-best"></div>
-        <button type="button" class="btn-primary" id="btn-again">Play Again</button>
-        <p class="hint">Try a faster route or a wild bounce next time.</p>
+        <button type="button" class="btn-primary" id="btn-again">もう一度</button>
+        <p class="hint">別ルートやバウンド技でタイム更新に挑戦！</p>
       </div>
     </div>
   </div>
@@ -329,15 +392,21 @@
     //  PHYSICS TUNING — change these for different feel
     // ═══════════════════════════════════════════════════
     const PHYSICS = {
-      gravityScale: 0.00115,   // base gravity multiplier for tilt (feels weighty)
-      tiltMax: 0.9,            // clamp device tilt influence
-      dragForce: 0.00055,      // mouse/touch push strength
-      ballRestitution: 0.45,   // bounciness (0–1)
-      ballFriction: 0.02,      // surface friction
-      ballFrictionAir: 0.012,  // air drag so it settles naturally
-      ballDensity: 0.004,      // mass feel
-      wallRestitution: 0.35,
-      wallFriction: 0.15,
+      // Matter.js の gravity.scale 相当。傾き・キー・スティックで方向を変える
+      gravityStrength: 1.15,
+      tiltMax: 1.0,
+      // ドラッグ時に目標速度へ寄せる強さ（0〜1に近いほど機敏）
+      dragSteer: 0.14,
+      dragMaxSpeed: 9.5,
+      // キー / 仮想スティックの目標速度
+      keyMaxSpeed: 8.5,
+      stickMaxSpeed: 8.5,
+      ballRestitution: 0.48,
+      ballFriction: 0.001,
+      ballFrictionAir: 0.02,
+      ballDensity: 0.002,
+      wallRestitution: 0.4,
+      wallFriction: 0.08,
     };
 
     // ═══════════════════════════════════════════════════
@@ -398,13 +467,16 @@
     const btnTilt = document.getElementById('btn-tilt');
     const btnAgain = document.getElementById('btn-again');
     const btnReset = document.getElementById('btn-reset');
+    const stickZone = document.getElementById('stick-zone');
+    const stickKnob = document.getElementById('stick-knob');
+    const controlHint = document.getElementById('control-hint');
 
     const STORAGE_KEY = 'marble-maze-best-v1';
 
     // ═══════════════════════════════════════════════════
     //  MATTER.JS ALIASES
     // ═══════════════════════════════════════════════════
-    const { Engine, World, Bodies, Body, Events, Composite } = Matter;
+    const { Engine, World, Bodies, Body, Composite } = Matter;
 
     // ═══════════════════════════════════════════════════
     //  GAME STATE
@@ -423,15 +495,21 @@
 
     // Input
     let tiltEnabled = false;
-    let tiltBeta = 0;   // front-back
-    let tiltGamma = 0;  // left-right
+    let tiltActive = false; // 実際に傾きイベントが届いたか
+    let tiltBeta = 0;
+    let tiltGamma = 0;
     let pointerDown = false;
     let pointerX = 0, pointerY = 0;
-    let lastPointerX = 0, lastPointerY = 0;
+
+    // キーボード（矢印 / WASD）
+    const keys = Object.create(null);
+
+    // 仮想スティック -1〜1
+    let stickX = 0, stickY = 0;
+    let stickPointerId = null;
 
     // Visual FX
     let goalPulse = 0;
-    let winParticles = [];
     let shake = 0;
 
     // ═══════════════════════════════════════════════════
@@ -453,7 +531,7 @@
     }
 
     function updateBestDisplay() {
-      bestEl.textContent = bestTime != null ? 'Best ' + formatTime(bestTime) : '';
+      bestEl.textContent = bestTime != null ? 'ベスト ' + formatTime(bestTime) : '';
     }
 
     function nX(v) { return v * W; }
@@ -583,22 +661,36 @@
       elapsed = 0;
       startTime = performance.now();
       rebuildWorld(true);
+      if (engine) {
+        engine.gravity.x = 0;
+        engine.gravity.y = 0;
+      }
       running = true;
       hud.classList.add('visible');
+      stickZone.classList.add('visible');
+      controlHint.classList.add('visible');
       updateBestDisplay();
     }
 
     // ═══════════════════════════════════════════════════
-    //  CONTROLS — tilt / touch / mouse
+    //  CONTROLS — 傾き / ドラッグ / キー / 仮想スティック
     // ═══════════════════════════════════════════════════
+    function clamp(v, lo, hi) {
+      return Math.max(lo, Math.min(hi, v));
+    }
+
     function applyOrientation(event) {
-      // beta: -180..180 (front-back), gamma: -90..90 (left-right)
+      // beta: 前後, gamma: 左右
       if (event.beta != null) tiltBeta = event.beta;
       if (event.gamma != null) tiltGamma = event.gamma;
+      // 値が実際に届いたら傾き操作を有効化
+      if (event.beta != null || event.gamma != null) {
+        tiltActive = true;
+      }
     }
 
     async function requestTiltPermission() {
-      // iOS 13+ requires permission
+      // iOS 13+ はユーザー操作内で permission が必要
       if (typeof DeviceOrientationEvent !== 'undefined' &&
           typeof DeviceOrientationEvent.requestPermission === 'function') {
         try {
@@ -606,112 +698,227 @@
           if (state === 'granted') {
             window.addEventListener('deviceorientation', applyOrientation, true);
             tiltEnabled = true;
-            tiltStatus.textContent = 'Tilt enabled — tilt your phone!';
+            tiltStatus.textContent = '傾き操作ON — 端末を傾けてください';
             btnTilt.style.display = 'none';
             return true;
           }
-          tiltStatus.textContent = 'Tilt permission denied — use drag instead.';
+          tiltStatus.textContent = '傾きが拒否されました。ドラッグやスティックで操作できます。';
           return false;
         } catch (e) {
-          tiltStatus.textContent = 'Tilt unavailable — drag to play.';
+          tiltStatus.textContent = '傾きを使えません。ドラッグやスティックで操作してください。';
           return false;
         }
       }
-      // Non-iOS: just listen
       if (typeof DeviceOrientationEvent !== 'undefined') {
         window.addEventListener('deviceorientation', applyOrientation, true);
         tiltEnabled = true;
-        tiltStatus.textContent = 'Tilt ready (if your device supports it).';
+        tiltStatus.textContent = '傾き対応端末なら傾けて遊べます。PCはドラッグ / キー操作です。';
         return true;
       }
-      tiltStatus.textContent = 'No tilt sensor — drag to play.';
+      tiltStatus.textContent = '傾きセンサーなし — ドラッグ / キー / スティックで操作';
       return false;
     }
 
-    function setupPointer() {
-      const toLocal = (e) => {
-        const r = canvas.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        return {
-          x: clientX - r.left,
-          y: clientY - r.top,
-        };
-      };
+    function eventPoint(e) {
+      // Pointer / Mouse / Touch を共通化
+      if (e.touches && e.touches.length) {
+        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+      if (e.changedTouches && e.changedTouches.length) {
+        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+      }
+      return { x: e.clientX, y: e.clientY };
+    }
 
+    function toCanvasLocal(e) {
+      const r = canvas.getBoundingClientRect();
+      const p = eventPoint(e);
+      // CSS 表示サイズ → 論理座標（physics と同じ W×H）
+      const sx = W / r.width;
+      const sy = H / r.height;
+      return {
+        x: (p.x - r.left) * sx,
+        y: (p.y - r.top) * sy,
+      };
+    }
+
+    function setupPointer() {
       const onDown = (e) => {
         if (!running || won) return;
+        // スティック操作中はキャンバスドラッグしない
+        if (stickPointerId != null) return;
         e.preventDefault();
         pointerDown = true;
-        const p = toLocal(e);
-        pointerX = lastPointerX = p.x;
-        pointerY = lastPointerY = p.y;
+        const p = toCanvasLocal(e);
+        pointerX = p.x;
+        pointerY = p.y;
       };
 
       const onMove = (e) => {
         if (!pointerDown) return;
         e.preventDefault();
-        const p = toLocal(e);
+        const p = toCanvasLocal(e);
         pointerX = p.x;
         pointerY = p.y;
       };
 
-      const onUp = (e) => {
+      const onUp = () => {
         pointerDown = false;
       };
 
-      canvas.addEventListener('mousedown', onDown);
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
+      // Pointer Events（マウス・タッチ両対応・座標が安定）
+      canvas.addEventListener('pointerdown', onDown);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
 
+      // 古い環境向けフォールバック
       canvas.addEventListener('touchstart', onDown, { passive: false });
       canvas.addEventListener('touchmove', onMove, { passive: false });
       canvas.addEventListener('touchend', onUp);
       canvas.addEventListener('touchcancel', onUp);
     }
 
-    function applyForces() {
-      if (!ball || !running || won) return;
+    function setupKeyboard() {
+      const codeMap = {
+        ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+        KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
+      };
+      window.addEventListener('keydown', (e) => {
+        const k = codeMap[e.code];
+        if (!k) return;
+        keys[k] = true;
+        e.preventDefault();
+      });
+      window.addEventListener('keyup', (e) => {
+        const k = codeMap[e.code];
+        if (!k) return;
+        keys[k] = false;
+      });
+    }
 
-      let fx = 0, fy = 0;
-      // Force scale relative to mass so feel stays consistent if density changes
-      const m = ball.mass;
+    function setupVirtualStick() {
+      const maxR = 36; // ノブの最大移動半径(px)
 
-      // Device tilt → gravity (phone held roughly flat / slight upright)
-      if (tiltEnabled) {
-        // gamma: left (−) / right (+); beta: back (−) / forward (+)
-        // Subtract a comfortable "neutral" pitch so flat-ish hold ≈ zero force
+      const setKnob = (nx, ny) => {
+        stickKnob.style.transform = 'translate(' + (nx * maxR) + 'px,' + (ny * maxR) + 'px)';
+      };
+
+      const updateFromEvent = (e) => {
+        const r = stickZone.getBoundingClientRect();
+        const p = eventPoint(e);
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        let dx = p.x - cx;
+        let dy = p.y - cy;
+        const len = Math.hypot(dx, dy) || 1;
+        const clipped = Math.min(len, maxR);
+        dx = (dx / len) * clipped;
+        dy = (dy / len) * clipped;
+        stickX = dx / maxR;
+        stickY = dy / maxR;
+        setKnob(stickX, stickY);
+      };
+
+      const onDown = (e) => {
+        if (!running || won) return;
+        e.preventDefault();
+        e.stopPropagation();
+        stickPointerId = e.pointerId != null ? e.pointerId : 'touch';
+        try { stickZone.setPointerCapture(e.pointerId); } catch (_) {}
+        updateFromEvent(e);
+      };
+
+      const onMove = (e) => {
+        if (stickPointerId == null) return;
+        if (e.pointerId != null && e.pointerId !== stickPointerId) return;
+        e.preventDefault();
+        updateFromEvent(e);
+      };
+
+      const onUp = (e) => {
+        if (stickPointerId == null) return;
+        if (e.pointerId != null && e.pointerId !== stickPointerId) return;
+        stickPointerId = null;
+        stickX = 0;
+        stickY = 0;
+        setKnob(0, 0);
+      };
+
+      stickZone.addEventListener('pointerdown', onDown);
+      stickZone.addEventListener('pointermove', onMove);
+      stickZone.addEventListener('pointerup', onUp);
+      stickZone.addEventListener('pointercancel', onUp);
+      stickZone.addEventListener('touchstart', onDown, { passive: false });
+      stickZone.addEventListener('touchmove', onMove, { passive: false });
+      stickZone.addEventListener('touchend', onUp);
+    }
+
+    /**
+     * 毎フレームの操作入力を Matter の重力 + 速度ステアに反映。
+     * 傾きが弱い / 無い端末でもドラッグ・キー・スティックで確実に動く。
+     */
+    function applyControls() {
+      if (!ball || !running || won || !engine) return;
+
+      let gx = 0;
+      let gy = 0;
+
+      // 1) 端末の傾き → 重力方向
+      if (tiltEnabled && tiltActive) {
         const neutralBeta = 35;
-        let gx = clamp(tiltGamma / 30, -PHYSICS.tiltMax, PHYSICS.tiltMax);
-        let gy = clamp((tiltBeta - neutralBeta) / 30, -PHYSICS.tiltMax, PHYSICS.tiltMax);
-
-        // Dead-zone so tiny hand jitter doesn't keep the ball crawling
-        if (Math.abs(gx) < 0.06) gx = 0;
-        if (Math.abs(gy) < 0.06) gy = 0;
-
-        const g = PHYSICS.gravityScale * m * 1000;
-        fx += gx * g;
-        fy += gy * g;
+        let tx = clamp(tiltGamma / 25, -PHYSICS.tiltMax, PHYSICS.tiltMax);
+        let ty = clamp((tiltBeta - neutralBeta) / 25, -PHYSICS.tiltMax, PHYSICS.tiltMax);
+        if (Math.abs(tx) < 0.05) tx = 0;
+        if (Math.abs(ty) < 0.05) ty = 0;
+        gx += tx;
+        gy += ty;
       }
 
-      // Drag / mouse: pull the marble toward the finger (intuitive on touch)
+      // 2) キーボード
+      let kx = 0, ky = 0;
+      if (keys.left) kx -= 1;
+      if (keys.right) kx += 1;
+      if (keys.up) ky -= 1;
+      if (keys.down) ky += 1;
+      if (kx !== 0 || ky !== 0) {
+        const len = Math.hypot(kx, ky) || 1;
+        gx += (kx / len) * 0.95;
+        gy += (ky / len) * 0.95;
+      }
+
+      // 3) 仮想スティック
+      if (stickX !== 0 || stickY !== 0) {
+        gx += stickX * 0.95;
+        gy += stickY * 0.95;
+      }
+
+      // 重力は Matter 標準経路（質量に比例し安定）
+      const gLen = Math.hypot(gx, gy);
+      if (gLen > PHYSICS.tiltMax) {
+        gx = (gx / gLen) * PHYSICS.tiltMax;
+        gy = (gy / gLen) * PHYSICS.tiltMax;
+      }
+      engine.gravity.x = gx * PHYSICS.gravityStrength;
+      engine.gravity.y = gy * PHYSICS.gravityStrength;
+      engine.gravity.scale = 0.001;
+
+      // 4) ドラッグ: ポインタ方向へ速度を寄せる（反応が分かりやすい）
       if (pointerDown) {
         const dx = pointerX - ball.position.x;
         const dy = pointerY - ball.position.y;
         const dist = Math.hypot(dx, dy) || 1;
-        const strength = PHYSICS.dragForce * m * 1000;
-        const pull = Math.min(dist / (70 * scale), 1.5);
-        fx += (dx / dist) * strength * pull;
-        fy += (dy / dist) * strength * pull;
+        // 近いほど弱く、離すほど上限まで加速
+        const speed = Math.min(dist / (55 * scale), 1) * PHYSICS.dragMaxSpeed * scale;
+        const tvx = (dx / dist) * speed;
+        const tvy = (dy / dist) * speed;
+        const v = ball.velocity;
+        const s = PHYSICS.dragSteer;
+        Body.setVelocity(ball, {
+          x: v.x + (tvx - v.x) * s,
+          y: v.y + (tvy - v.y) * s,
+        });
       }
-
-      if (fx !== 0 || fy !== 0) {
-        Body.applyForce(ball, ball.position, { x: fx, y: fy });
-      }
-    }
-
-    function clamp(v, lo, hi) {
-      return Math.max(lo, Math.min(hi, v));
     }
 
     // ═══════════════════════════════════════════════════
@@ -758,13 +965,19 @@
 
       winTimeEl.textContent = formatTime(elapsed);
       winBestEl.textContent = isNewBest
-        ? '★ New best time!'
-        : (bestTime != null ? 'Best: ' + formatTime(bestTime) : '');
+        ? '★ 新記録！'
+        : (bestTime != null ? 'ベスト: ' + formatTime(bestTime) : '');
       updateBestDisplay();
 
       spawnConfetti();
       winScreen.classList.remove('hidden');
       hud.classList.remove('visible');
+      stickZone.classList.remove('visible');
+      controlHint.classList.remove('visible');
+      if (engine) {
+        engine.gravity.x = 0;
+        engine.gravity.y = 0;
+      }
     }
 
     function spawnConfetti() {
@@ -982,8 +1195,7 @@
       lastFrame = now;
 
       if (running && !won && engine) {
-        applyForces();
-        // Fixed-ish step: Matter default ~60fps
+        applyControls();
         Engine.update(engine, 1000 / 60);
         checkHolesAndGoal();
         elapsed = (now - startTime) / 1000;
@@ -996,15 +1208,16 @@
     // ═══════════════════════════════════════════════════
     //  UI EVENTS
     // ═══════════════════════════════════════════════════
-    btnStart.addEventListener('click', async () => {
+    btnStart.addEventListener('click', () => {
+      // 先にゲーム開始（傾き許可待ちで操作不能になるのを防ぐ）
       startScreen.classList.add('hidden');
-      // Try tilt automatically; show button if iOS needs gesture (we are in a gesture)
-      await requestTiltPermission();
       fullReset();
+      // 傾きは裏で許可（失敗してもドラッグ / キー / スティックで遊べる）
+      requestTiltPermission().catch(() => {});
     });
 
-    btnTilt.addEventListener('click', async () => {
-      await requestTiltPermission();
+    btnTilt.addEventListener('click', () => {
+      requestTiltPermission().catch(() => {});
     });
 
     btnAgain.addEventListener('click', () => {
@@ -1018,21 +1231,17 @@
         return;
       }
       resetBall();
-      // Optional: don't reset timer on soft reset — keeps pressure fun
-      // Uncomment next two lines to also reset the clock:
-      // elapsed = 0;
-      // startTime = performance.now();
     });
 
-    // Detect iOS permission API and show extra button on start if needed
+    // 起動時の案内
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
       btnTilt.style.display = 'inline-block';
-      tiltStatus.textContent = 'Tap Play (or Enable Tilt) to allow motion sensors.';
+      tiltStatus.textContent = '「プレイ」後、必要なら「傾き操作を許可」を押してください。';
     } else if (typeof DeviceOrientationEvent === 'undefined') {
-      tiltStatus.textContent = 'Desktop: drag on the board to roll the ball.';
+      tiltStatus.textContent = 'PC: 盤面ドラッグ または 矢印キー / WASD で操作';
     } else {
-      tiltStatus.textContent = 'Phone tilt will activate when you press Play.';
+      tiltStatus.textContent = 'スマホは傾き、PCはドラッグやキーで操作できます。';
     }
 
     // ═══════════════════════════════════════════════════
@@ -1042,14 +1251,14 @@
       resize();
     });
 
-    // Prevent pull-to-refresh / scroll on mobile while playing
     document.body.addEventListener('touchmove', (e) => {
       if (e.target === canvas || wrap.contains(e.target)) e.preventDefault();
     }, { passive: false });
 
     setupPointer();
+    setupKeyboard();
+    setupVirtualStick();
     resize();
-    // Draw idle board under start overlay
     rebuildWorld(true);
     running = false;
     updateBestDisplay();
