@@ -47,7 +47,22 @@
       margin: 0;
       padding: 0;
       -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ゲーム盤面はスクロール防止。入力欄は除外 */
+    body, canvas, #stick-zone, #hud, .overlay {
       touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    input, textarea, button {
+      touch-action: manipulation;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    button {
       user-select: none;
       -webkit-user-select: none;
     }
@@ -330,6 +345,228 @@
     }
 
     #control-hint.visible { display: block; }
+
+    /* ── ランキング / 管理 ─────────────────────────── */
+    .hud-actions {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    #btn-rank {
+      background: rgba(78, 205, 196, 0.18);
+      border: 1px solid rgba(78, 205, 196, 0.5);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      min-height: 44px;
+    }
+
+    .overlay.scrollable {
+      justify-content: flex-start;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+    }
+
+    .rank-title {
+      font-size: 1.35rem;
+      margin: 12px 0 6px;
+      color: var(--gold);
+    }
+
+    .rank-note {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 10px;
+      line-height: 1.4;
+      max-width: 300px;
+    }
+
+    #rank-list {
+      width: min(100%, 320px);
+      margin: 0 auto 12px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(78, 205, 196, 0.25);
+      background: rgba(15, 15, 26, 0.55);
+      text-align: left;
+    }
+
+    .rank-row {
+      display: grid;
+      grid-template-columns: 36px 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      font-size: 0.9rem;
+    }
+
+    .rank-row:last-child { border-bottom: none; }
+    .rank-row.top1 { background: rgba(255, 217, 61, 0.12); }
+    .rank-row.top2 { background: rgba(200, 210, 230, 0.08); }
+    .rank-row.top3 { background: rgba(205, 140, 90, 0.1); }
+
+    .rank-pos {
+      font-weight: 800;
+      color: var(--accent);
+      text-align: center;
+    }
+
+    .rank-name {
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rank-time {
+      font-variant-numeric: tabular-nums;
+      color: var(--gold);
+      font-weight: 700;
+      min-width: 58px;
+      text-align: right;
+    }
+
+    .rank-del {
+      appearance: none;
+      border: 1px solid rgba(255, 107, 107, 0.55);
+      background: rgba(255, 107, 107, 0.15);
+      color: #ffb4b4;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 6px 8px;
+      cursor: pointer;
+      min-height: 32px;
+    }
+
+    .rank-empty {
+      padding: 20px 12px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .rank-admin-bar {
+      width: min(100%, 320px);
+      margin: 0 auto 10px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(255, 107, 107, 0.08);
+      border: 1px solid rgba(255, 107, 107, 0.25);
+      display: none;
+    }
+
+    .rank-admin-bar.open { display: block; }
+
+    .rank-admin-bar p {
+      font-size: 0.78rem;
+      color: #ffb4b4;
+      margin-bottom: 8px;
+    }
+
+    .rank-admin-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #admin-login-row {
+      display: flex;
+    }
+
+    .rank-admin-row input {
+      flex: 1;
+      min-width: 100px;
+      min-height: 40px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(0, 0, 0, 0.35);
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 14px;
+      touch-action: manipulation;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .name-form {
+      width: min(100%, 300px);
+      margin: 10px auto 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .name-form label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-align: left;
+    }
+
+    .name-form input {
+      min-height: 44px;
+      border-radius: 12px;
+      border: 1px solid rgba(78, 205, 196, 0.4);
+      background: rgba(0, 0, 0, 0.35);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 16px; /* iOS zoom 防止 */
+      touch-action: manipulation;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .name-form .row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .name-form .row .btn-primary,
+    .name-form .row .btn-secondary {
+      flex: 1;
+      margin-top: 0;
+      min-width: 0;
+      padding-left: 12px;
+      padding-right: 12px;
+      font-size: 0.95rem;
+    }
+
+    #win-rank-msg {
+      font-size: 0.9rem;
+      color: var(--accent);
+      min-height: 1.2em;
+      margin-bottom: 6px;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 4px;
+    }
+
+    .danger-btn {
+      appearance: none;
+      border: 1px solid rgba(255, 107, 107, 0.6);
+      background: rgba(255, 107, 107, 0.2);
+      color: #ffb4b4;
+      font-weight: 700;
+      font-size: 0.85rem;
+      padding: 10px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      min-height: 40px;
+    }
   </style>
 </head>
 <body>
@@ -339,7 +576,10 @@
         <span id="timer">0.00s</span>
         <span id="best-time"></span>
       </div>
-      <button type="button" id="btn-reset" aria-label="リセット">リセット</button>
+      <div class="hud-actions">
+        <button type="button" id="btn-rank" aria-label="ランキング">🏆</button>
+        <button type="button" id="btn-reset" aria-label="リセット">リセット</button>
+      </div>
     </div>
 
     <div id="canvas-wrap">
@@ -363,19 +603,63 @@
           <li><strong>PC:</strong> 矢印キー / WASD</li>
           <li>黒い穴に落ちるとスタートに戻る</li>
         </ul>
-        <button type="button" class="btn-primary" id="btn-start">プレイ</button>
-        <button type="button" class="btn-secondary" id="btn-tilt" style="display:none;">傾き操作を許可</button>
+        <div class="btn-row">
+          <button type="button" class="btn-primary" id="btn-start">プレイ</button>
+        </div>
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" id="btn-rank-start">🏆 ランキング</button>
+          <button type="button" class="btn-secondary" id="btn-tilt" style="display:none;">傾き操作を許可</button>
+        </div>
         <p id="tilt-status"></p>
-        <p class="hint">スマホは傾きが一番気持ちいいです。ベストタイムはこの端末に保存されます。</p>
+        <p class="hint">クリアタイムはランキングに登録できます。ベストタイムはこの端末に保存されます。</p>
       </div>
 
       <!-- Win screen -->
-      <div id="win-screen" class="overlay hidden">
+      <div id="win-screen" class="overlay hidden scrollable">
         <h1>クリア！</h1>
         <div id="win-time">0.00s</div>
         <div id="win-best"></div>
-        <button type="button" class="btn-primary" id="btn-again">もう一度</button>
+        <div id="win-rank-msg"></div>
+
+        <div class="name-form" id="name-form">
+          <label for="player-name">ランキングに名前を登録</label>
+          <input id="player-name" type="text" maxlength="12" placeholder="なまえ（12文字まで）" autocomplete="nickname" />
+          <div class="row">
+            <button type="button" class="btn-primary" id="btn-submit-score">登録する</button>
+            <button type="button" class="btn-secondary" id="btn-skip-score">スキップ</button>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn-primary" id="btn-again">もう一度</button>
+          <button type="button" class="btn-secondary" id="btn-rank-win">🏆 ランキング</button>
+        </div>
         <p class="hint">別ルートやバウンド技でタイム更新に挑戦！</p>
+      </div>
+
+      <!-- Ranking board -->
+      <div id="rank-screen" class="overlay hidden scrollable">
+        <h2 class="rank-title">🏆 クリアタイム ランキング</h2>
+        <p class="rank-note">この端末のブラウザに保存されます。管理PINで削除できます。</p>
+        <div id="rank-list"></div>
+
+        <div class="rank-admin-bar" id="admin-bar">
+          <p>管理モードON — 各行の「削除」や全削除が使えます</p>
+          <div class="rank-admin-row">
+            <button type="button" class="danger-btn" id="btn-clear-all">すべて削除</button>
+            <button type="button" class="btn-secondary" id="btn-admin-logout">管理終了</button>
+          </div>
+        </div>
+
+        <div class="rank-admin-row" id="admin-login-row" style="width:min(100%,320px);margin:0 auto 12px;">
+          <input id="admin-pin" type="password" inputmode="numeric" maxlength="12" placeholder="管理PIN" />
+          <button type="button" class="btn-secondary" id="btn-admin-login">管理</button>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn-primary" id="btn-rank-close">閉じる</button>
+        </div>
+        <p class="hint">初期PINはコード内 ADMIN_PIN（既定: 2468）です。家族用タブレットなど1台共有向きです。</p>
       </div>
     </div>
   </div>
@@ -408,6 +692,14 @@
       wallRestitution: 0.4,
       wallFriction: 0.08,
     };
+
+    // ── ランキング設定 ────────────────────────────────
+    // 管理PINはここを変更してください（家族に教える用）
+    const ADMIN_PIN = '2468';
+    const RANK_MAX = 20;           // 保存する最大件数
+    const RANK_KEY = 'marble-maze-rank-v1';
+    const BEST_KEY = 'marble-maze-best-v1';
+    const NAME_KEY = 'marble-maze-lastname';
 
     // ═══════════════════════════════════════════════════
     //  LEVEL DATA (normalized 0–1 coords within playfield)
@@ -462,16 +754,31 @@
     const winScreen = document.getElementById('win-screen');
     const winTimeEl = document.getElementById('win-time');
     const winBestEl = document.getElementById('win-best');
+    const winRankMsg = document.getElementById('win-rank-msg');
+    const nameForm = document.getElementById('name-form');
+    const playerNameInput = document.getElementById('player-name');
+    const rankScreen = document.getElementById('rank-screen');
+    const rankList = document.getElementById('rank-list');
+    const adminBar = document.getElementById('admin-bar');
+    const adminLoginRow = document.getElementById('admin-login-row');
+    const adminPinInput = document.getElementById('admin-pin');
     const tiltStatus = document.getElementById('tilt-status');
     const btnStart = document.getElementById('btn-start');
     const btnTilt = document.getElementById('btn-tilt');
     const btnAgain = document.getElementById('btn-again');
     const btnReset = document.getElementById('btn-reset');
+    const btnRank = document.getElementById('btn-rank');
+    const btnRankStart = document.getElementById('btn-rank-start');
+    const btnRankWin = document.getElementById('btn-rank-win');
+    const btnRankClose = document.getElementById('btn-rank-close');
+    const btnSubmitScore = document.getElementById('btn-submit-score');
+    const btnSkipScore = document.getElementById('btn-skip-score');
+    const btnAdminLogin = document.getElementById('btn-admin-login');
+    const btnAdminLogout = document.getElementById('btn-admin-logout');
+    const btnClearAll = document.getElementById('btn-clear-all');
     const stickZone = document.getElementById('stick-zone');
     const stickKnob = document.getElementById('stick-knob');
     const controlHint = document.getElementById('control-hint');
-
-    const STORAGE_KEY = 'marble-maze-best-v1';
 
     // ═══════════════════════════════════════════════════
     //  MATTER.JS ALIASES
@@ -492,38 +799,38 @@
     let startTime = 0;
     let elapsed = 0;
     let bestTime = loadBest();
+    let pendingScore = null;      // クリア直後・未登録のタイム
+    let scoreSubmitted = false;
+    let adminMode = false;
+    let rankReturnTo = 'start'; // ランキングを閉じたあと戻る先
 
     // Input
     let tiltEnabled = false;
-    let tiltActive = false; // 実際に傾きイベントが届いたか
+    let tiltActive = false;
     let tiltBeta = 0;
     let tiltGamma = 0;
     let pointerDown = false;
     let pointerX = 0, pointerY = 0;
 
-    // キーボード（矢印 / WASD）
     const keys = Object.create(null);
-
-    // 仮想スティック -1〜1
     let stickX = 0, stickY = 0;
     let stickPointerId = null;
 
-    // Visual FX
     let goalPulse = 0;
     let shake = 0;
 
     // ═══════════════════════════════════════════════════
-    //  UTIL
+    //  UTIL / STORAGE
     // ═══════════════════════════════════════════════════
     function loadBest() {
       try {
-        const v = localStorage.getItem(STORAGE_KEY);
+        const v = localStorage.getItem(BEST_KEY);
         return v ? parseFloat(v) : null;
       } catch (_) { return null; }
     }
 
     function saveBest(t) {
-      try { localStorage.setItem(STORAGE_KEY, String(t)); } catch (_) {}
+      try { localStorage.setItem(BEST_KEY, String(t)); } catch (_) {}
     }
 
     function formatTime(t) {
@@ -536,6 +843,157 @@
 
     function nX(v) { return v * W; }
     function nY(v) { return v * H; }
+
+    function uid() {
+      return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    }
+
+    function loadScores() {
+      try {
+        const raw = localStorage.getItem(RANK_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return [];
+        return arr
+          .filter((e) => e && typeof e.time === 'number' && e.name)
+          .map((e) => ({
+            id: e.id || uid(),
+            name: String(e.name).slice(0, 12),
+            time: e.time,
+            at: e.at || 0,
+          }))
+          .sort((a, b) => a.time - b.time || a.at - b.at)
+          .slice(0, RANK_MAX);
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function saveScores(list) {
+      try {
+        localStorage.setItem(RANK_KEY, JSON.stringify(list.slice(0, RANK_MAX)));
+      } catch (_) {}
+    }
+
+    function loadLastName() {
+      try { return localStorage.getItem(NAME_KEY) || ''; } catch (_) { return ''; }
+    }
+
+    function saveLastName(name) {
+      try { localStorage.setItem(NAME_KEY, name); } catch (_) {}
+    }
+
+    /** @returns {{ entry: object, rank: number }} */
+    function addScore(name, time) {
+      const clean = (name || 'プレイヤー').trim().slice(0, 12) || 'プレイヤー';
+      const entry = { id: uid(), name: clean, time: time, at: Date.now() };
+      const list = loadScores();
+      list.push(entry);
+      list.sort((a, b) => a.time - b.time || a.at - b.at);
+      const trimmed = list.slice(0, RANK_MAX);
+      saveScores(trimmed);
+      saveLastName(clean);
+      const rank = trimmed.findIndex((e) => e.id === entry.id) + 1;
+      return { entry, rank: rank > 0 ? rank : trimmed.length };
+    }
+
+    function deleteScore(id) {
+      const list = loadScores().filter((e) => e.id !== id);
+      saveScores(list);
+      // ベストタイム表示は個人ベストのまま（ランキング削除と分離）
+    }
+
+    function clearAllScores() {
+      saveScores([]);
+    }
+
+    function formatDate(ts) {
+      if (!ts) return '';
+      const d = new Date(ts);
+      const m = d.getMonth() + 1;
+      const day = d.getDate();
+      return m + '/' + day;
+    }
+
+    function renderRankList() {
+      const list = loadScores();
+      rankList.innerHTML = '';
+
+      if (!list.length) {
+        const empty = document.createElement('div');
+        empty.className = 'rank-empty';
+        empty.textContent = 'まだ記録がありません。クリアして登録しよう！';
+        rankList.appendChild(empty);
+        return;
+      }
+
+      list.forEach((e, i) => {
+        const row = document.createElement('div');
+        row.className = 'rank-row' + (i === 0 ? ' top1' : i === 1 ? ' top2' : i === 2 ? ' top3' : '');
+
+        const pos = document.createElement('div');
+        pos.className = 'rank-pos';
+        pos.textContent = (i + 1) + '位';
+
+        const name = document.createElement('div');
+        name.className = 'rank-name';
+        name.textContent = e.name;
+        name.title = formatDate(e.at);
+
+        const time = document.createElement('div');
+        time.className = 'rank-time';
+        time.textContent = formatTime(e.time);
+
+        row.appendChild(pos);
+        row.appendChild(name);
+        row.appendChild(time);
+
+        if (adminMode) {
+          const del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'rank-del';
+          del.textContent = '削除';
+          del.addEventListener('click', () => {
+            if (!confirm(e.name + ' の ' + formatTime(e.time) + ' を削除しますか？')) return;
+            deleteScore(e.id);
+            renderRankList();
+          });
+          row.appendChild(del);
+        } else {
+          const spacer = document.createElement('div');
+          spacer.style.width = '1px';
+          row.appendChild(spacer);
+        }
+
+        rankList.appendChild(row);
+      });
+    }
+
+    function setAdminMode(on) {
+      adminMode = !!on;
+      adminBar.classList.toggle('open', adminMode);
+      adminLoginRow.style.display = adminMode ? 'none' : 'flex';
+      if (!adminMode) adminPinInput.value = '';
+      renderRankList();
+    }
+
+    function openRankBoard(from) {
+      rankReturnTo = from || 'start';
+      rankScreen.classList.remove('hidden');
+      renderRankList();
+    }
+
+    function closeRankBoard() {
+      rankScreen.classList.add('hidden');
+      setAdminMode(false);
+      if (rankReturnTo === 'win' && won) {
+        winScreen.classList.remove('hidden');
+      } else if (rankReturnTo === 'play' && running) {
+        // プレイ中はボードだけ閉じる
+      } else if (!running && !won) {
+        startScreen.classList.remove('hidden');
+      }
+    }
 
     // ═══════════════════════════════════════════════════
     //  LAYOUT / RESIZE
@@ -955,6 +1413,8 @@
       won = true;
       running = false;
       elapsed = (performance.now() - startTime) / 1000;
+      pendingScore = elapsed;
+      scoreSubmitted = false;
 
       let isNewBest = false;
       if (bestTime == null || elapsed < bestTime) {
@@ -965,8 +1425,11 @@
 
       winTimeEl.textContent = formatTime(elapsed);
       winBestEl.textContent = isNewBest
-        ? '★ 新記録！'
-        : (bestTime != null ? 'ベスト: ' + formatTime(bestTime) : '');
+        ? '★ 自己ベスト更新！'
+        : (bestTime != null ? '自己ベスト: ' + formatTime(bestTime) : '');
+      winRankMsg.textContent = '';
+      nameForm.style.display = '';
+      playerNameInput.value = loadLastName();
       updateBestDisplay();
 
       spawnConfetti();
@@ -978,6 +1441,22 @@
         engine.gravity.x = 0;
         engine.gravity.y = 0;
       }
+    }
+
+    function submitPendingScore() {
+      if (scoreSubmitted || pendingScore == null) return;
+      const name = playerNameInput.value;
+      const { rank } = addScore(name, pendingScore);
+      scoreSubmitted = true;
+      nameForm.style.display = 'none';
+      winRankMsg.textContent = rank + '位 にランクイン！';
+    }
+
+    function skipPendingScore() {
+      scoreSubmitted = true;
+      pendingScore = null;
+      nameForm.style.display = 'none';
+      winRankMsg.textContent = '登録せずにスキップしました';
     }
 
     function spawnConfetti() {
@@ -1209,10 +1688,9 @@
     //  UI EVENTS
     // ═══════════════════════════════════════════════════
     btnStart.addEventListener('click', () => {
-      // 先にゲーム開始（傾き許可待ちで操作不能になるのを防ぐ）
       startScreen.classList.add('hidden');
+      rankScreen.classList.add('hidden');
       fullReset();
-      // 傾きは裏で許可（失敗してもドラッグ / キー / スティックで遊べる）
       requestTiltPermission().catch(() => {});
     });
 
@@ -1221,6 +1699,7 @@
     });
 
     btnAgain.addEventListener('click', () => {
+      rankScreen.classList.add('hidden');
       fullReset();
     });
 
@@ -1231,6 +1710,69 @@
         return;
       }
       resetBall();
+    });
+
+    btnSubmitScore.addEventListener('click', () => {
+      submitPendingScore();
+    });
+
+    btnSkipScore.addEventListener('click', () => {
+      skipPendingScore();
+    });
+
+    playerNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitPendingScore();
+      }
+    });
+
+    function openRankFrom(from) {
+      if (from === 'start') startScreen.classList.add('hidden');
+      if (from === 'win') winScreen.classList.add('hidden');
+      openRankBoard(from);
+    }
+
+    btnRankStart.addEventListener('click', () => openRankFrom('start'));
+    btnRankWin.addEventListener('click', () => openRankFrom('win'));
+    btnRank.addEventListener('click', () => {
+      // プレイ中も見られる
+      openRankBoard(running ? 'play' : (won ? 'win' : 'start'));
+      if (!running) startScreen.classList.add('hidden');
+      if (won) winScreen.classList.add('hidden');
+    });
+
+    btnRankClose.addEventListener('click', () => {
+      closeRankBoard();
+    });
+
+    btnAdminLogin.addEventListener('click', () => {
+      const pin = (adminPinInput.value || '').trim();
+      if (pin === ADMIN_PIN) {
+        setAdminMode(true);
+      } else {
+        alert('PINが違います');
+        adminPinInput.value = '';
+        adminPinInput.focus();
+      }
+    });
+
+    adminPinInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        btnAdminLogin.click();
+      }
+    });
+
+    btnAdminLogout.addEventListener('click', () => {
+      setAdminMode(false);
+    });
+
+    btnClearAll.addEventListener('click', () => {
+      if (!adminMode) return;
+      if (!confirm('ランキングをすべて削除します。よろしいですか？')) return;
+      clearAllScores();
+      renderRankList();
     });
 
     // 起動時の案内
