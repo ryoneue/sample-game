@@ -26,9 +26,13 @@
   ║  EXTENDING                                                       ║
   ║  • Edit LEVELS below to add walls/holes/start/goal.              ║
   ║  • Tweak PHYSICS constants for weight, friction, tilt strength.  ║
+  ║  • 共有ランキング: FIREBASE_CONFIG を埋め込み（RANKING-SETUP.md） ║
   ╚══════════════════════════════════════════════════════════════════╝
   -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+  <!-- ネット共有ランキング用 Firebase（未設定時は端末内 localStorage にフォールバック） -->
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
   <style>
     :root {
       --bg: #0f0f1a;
@@ -611,7 +615,7 @@
           <button type="button" class="btn-secondary" id="btn-tilt" style="display:none;">傾き操作を許可</button>
         </div>
         <p id="tilt-status"></p>
-        <p class="hint">クリアタイムはランキングに登録できます。ベストタイムはこの端末に保存されます。</p>
+        <p class="hint">クリアタイムはランキング登録可。Firebase設定後は全端末で共有されます（RANKING-SETUP.md）。</p>
       </div>
 
       <!-- Win screen -->
@@ -640,11 +644,11 @@
       <!-- Ranking board -->
       <div id="rank-screen" class="overlay hidden scrollable">
         <h2 class="rank-title">🏆 クリアタイム ランキング</h2>
-        <p class="rank-note">この端末のブラウザに保存されます。管理PINで削除できます。</p>
+        <p class="rank-note" id="rank-mode-note">読み込み中…</p>
         <div id="rank-list"></div>
 
         <div class="rank-admin-bar" id="admin-bar">
-          <p>管理モードON — 各行の「削除」や全削除が使えます</p>
+          <p>管理モードON — 各行の「削除」や全削除が使えます（共有DBにも反映）</p>
           <div class="rank-admin-row">
             <button type="button" class="danger-btn" id="btn-clear-all">すべて削除</button>
             <button type="button" class="btn-secondary" id="btn-admin-logout">管理終了</button>
@@ -657,9 +661,10 @@
         </div>
 
         <div class="btn-row">
+          <button type="button" class="btn-secondary" id="btn-rank-refresh">更新</button>
           <button type="button" class="btn-primary" id="btn-rank-close">閉じる</button>
         </div>
-        <p class="hint">初期PINはコード内 ADMIN_PIN（既定: 2468）です。家族用タブレットなど1台共有向きです。</p>
+        <p class="hint">ネット共有は Firebase 設定が必要です（RANKING-SETUP.md）。管理PIN既定: 2468</p>
       </div>
     </div>
   </div>
@@ -694,12 +699,28 @@
     };
 
     // ── ランキング設定 ────────────────────────────────
-    // 管理PINはここを変更してください（家族に教える用）
+    // 管理PIN（削除操作の簡易ロック。クライアント側のため完全秘密ではない）
     const ADMIN_PIN = '2468';
-    const RANK_MAX = 20;           // 保存する最大件数
+    const RANK_MAX = 30;           // 表示・保持する最大件数
     const RANK_KEY = 'marble-maze-rank-v1';
     const BEST_KEY = 'marble-maze-best-v1';
     const NAME_KEY = 'marble-maze-lastname';
+    const COLLECTION = 'scores';   // Firestore コレクション名
+
+    /**
+     * ★ ネット全体でランキングを共有するには Firebase を設定 ★
+     * 手順は同フォルダの RANKING-SETUP.md を参照。
+     * apiKey / projectId が入っていると自動でオンライン共有モードになります。
+     * 空のままだと、この端末だけの localStorage モードです。
+     */
+    const FIREBASE_CONFIG = {
+      apiKey: '',
+      authDomain: '',
+      projectId: '',
+      storageBucket: '',
+      messagingSenderId: '',
+      appId: '',
+    };
 
     // ═══════════════════════════════════════════════════
     //  LEVEL DATA (normalized 0–1 coords within playfield)
@@ -759,6 +780,7 @@
     const playerNameInput = document.getElementById('player-name');
     const rankScreen = document.getElementById('rank-screen');
     const rankList = document.getElementById('rank-list');
+    const rankModeNote = document.getElementById('rank-mode-note');
     const adminBar = document.getElementById('admin-bar');
     const adminLoginRow = document.getElementById('admin-login-row');
     const adminPinInput = document.getElementById('admin-pin');
@@ -771,6 +793,7 @@
     const btnRankStart = document.getElementById('btn-rank-start');
     const btnRankWin = document.getElementById('btn-rank-win');
     const btnRankClose = document.getElementById('btn-rank-close');
+    const btnRankRefresh = document.getElementById('btn-rank-refresh');
     const btnSubmitScore = document.getElementById('btn-submit-score');
     const btnSkipScore = document.getElementById('btn-skip-score');
     const btnAdminLogin = document.getElementById('btn-admin-login');
@@ -799,10 +822,17 @@
     let startTime = 0;
     let elapsed = 0;
     let bestTime = loadBest();
-    let pendingScore = null;      // クリア直後・未登録のタイム
+    let pendingScore = null;
     let scoreSubmitted = false;
     let adminMode = false;
-    let rankReturnTo = 'start'; // ランキングを閉じたあと戻る先
+    let rankReturnTo = 'start';
+    let rankBusy = false;
+
+    // Firebase
+    let db = null;
+    let onlineMode = false;
+    let onlineReady = false;
+    let onlineError = '';
 
     // Input
     let tiltEnabled = false;
@@ -820,7 +850,7 @@
     let shake = 0;
 
     // ═══════════════════════════════════════════════════
-    //  UTIL / STORAGE
+    //  UTIL / STORAGE（オンライン or ローカル）
     // ═══════════════════════════════════════════════════
     function loadBest() {
       try {
@@ -848,31 +878,108 @@
       return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
     }
 
-    function loadScores() {
+    function isFirebaseConfigured() {
+      return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
+    }
+
+    function initFirebase() {
+      onlineMode = false;
+      onlineReady = false;
+      onlineError = '';
+      db = null;
+
+      if (!isFirebaseConfigured()) {
+        updateRankModeNote();
+        return;
+      }
+      if (typeof firebase === 'undefined') {
+        onlineError = 'Firebase SDK の読込に失敗しました';
+        updateRankModeNote();
+        return;
+      }
+      try {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(FIREBASE_CONFIG);
+        }
+        db = firebase.firestore();
+        onlineMode = true;
+        onlineReady = true;
+      } catch (e) {
+        onlineError = (e && e.message) ? e.message : 'Firebase 初期化エラー';
+        onlineMode = false;
+        onlineReady = false;
+        db = null;
+      }
+      updateRankModeNote();
+    }
+
+    function updateRankModeNote() {
+      if (!rankModeNote) return;
+      if (onlineMode && onlineReady) {
+        rankModeNote.textContent = '🌐 ネット共有ランキング（世界中・全端末で共通）— 管理PINで削除可';
+      } else if (onlineError) {
+        rankModeNote.textContent = '⚠ オンライン接続失敗: ' + onlineError + ' → この端末のみの記録を表示';
+      } else {
+        rankModeNote.textContent = '📱 端末内ランキング（FIREBASE_CONFIG 未設定）。ネット共有は RANKING-SETUP.md を参照';
+      }
+    }
+
+    function normalizeScores(arr) {
+      if (!Array.isArray(arr)) return [];
+      return arr
+        .filter((e) => e && typeof e.time === 'number' && e.name)
+        .map((e) => ({
+          id: e.id || uid(),
+          name: String(e.name).slice(0, 12),
+          time: Number(e.time),
+          at: e.at || 0,
+        }))
+        .sort((a, b) => a.time - b.time || a.at - b.at)
+        .slice(0, RANK_MAX);
+    }
+
+    function loadScoresLocal() {
       try {
         const raw = localStorage.getItem(RANK_KEY);
         if (!raw) return [];
-        const arr = JSON.parse(raw);
-        if (!Array.isArray(arr)) return [];
-        return arr
-          .filter((e) => e && typeof e.time === 'number' && e.name)
-          .map((e) => ({
-            id: e.id || uid(),
-            name: String(e.name).slice(0, 12),
-            time: e.time,
-            at: e.at || 0,
-          }))
-          .sort((a, b) => a.time - b.time || a.at - b.at)
-          .slice(0, RANK_MAX);
+        return normalizeScores(JSON.parse(raw));
       } catch (_) {
         return [];
       }
     }
 
-    function saveScores(list) {
+    function saveScoresLocal(list) {
       try {
-        localStorage.setItem(RANK_KEY, JSON.stringify(list.slice(0, RANK_MAX)));
+        localStorage.setItem(RANK_KEY, JSON.stringify(normalizeScores(list)));
       } catch (_) {}
+    }
+
+    async function loadScores() {
+      if (onlineMode && db) {
+        try {
+          const snap = await db.collection(COLLECTION)
+            .orderBy('time', 'asc')
+            .limit(RANK_MAX)
+            .get();
+          const list = [];
+          snap.forEach((doc) => {
+            const d = doc.data() || {};
+            list.push({
+              id: doc.id,
+              name: d.name,
+              time: d.time,
+              at: d.at || 0,
+            });
+          });
+          return normalizeScores(list);
+        } catch (e) {
+          onlineError = (e && e.message) ? e.message : '読込エラー';
+          updateRankModeNote();
+          // フォールバック
+          return loadScoresLocal();
+        }
+      }
+      return loadScoresLocal();
     }
 
     function loadLastName() {
@@ -883,90 +990,161 @@
       try { localStorage.setItem(NAME_KEY, name); } catch (_) {}
     }
 
-    /** @returns {{ entry: object, rank: number }} */
-    function addScore(name, time) {
+    /** @returns {Promise<{ entry: object, rank: number }>} */
+    async function addScore(name, time) {
       const clean = (name || 'プレイヤー').trim().slice(0, 12) || 'プレイヤー';
-      const entry = { id: uid(), name: clean, time: time, at: Date.now() };
-      const list = loadScores();
-      list.push(entry);
-      list.sort((a, b) => a.time - b.time || a.at - b.at);
-      const trimmed = list.slice(0, RANK_MAX);
-      saveScores(trimmed);
+      const at = Date.now();
       saveLastName(clean);
+
+      if (onlineMode && db) {
+        const ref = await db.collection(COLLECTION).add({
+          name: clean,
+          time: Number(time),
+          at: at,
+        });
+        // 古い余分な記録を整理（RANK_MAX を超えた分）
+        await pruneOnlineScores();
+        const list = await loadScores();
+        const rank = list.findIndex((e) => e.id === ref.id) + 1;
+        return {
+          entry: { id: ref.id, name: clean, time: Number(time), at: at },
+          rank: rank > 0 ? rank : list.length,
+        };
+      }
+
+      const entry = { id: uid(), name: clean, time: Number(time), at: at };
+      const list = loadScoresLocal();
+      list.push(entry);
+      const trimmed = normalizeScores(list);
+      saveScoresLocal(trimmed);
       const rank = trimmed.findIndex((e) => e.id === entry.id) + 1;
       return { entry, rank: rank > 0 ? rank : trimmed.length };
     }
 
-    function deleteScore(id) {
-      const list = loadScores().filter((e) => e.id !== id);
-      saveScores(list);
-      // ベストタイム表示は個人ベストのまま（ランキング削除と分離）
+    async function pruneOnlineScores() {
+      if (!db) return;
+      try {
+        // 上位 RANK_MAX だけ残すため、多めに取得して超過分を削除
+        const snap = await db.collection(COLLECTION)
+          .orderBy('time', 'asc')
+          .limit(RANK_MAX + 40)
+          .get();
+        if (snap.size <= RANK_MAX) return;
+        const batch = db.batch();
+        let i = 0;
+        snap.forEach((doc) => {
+          if (i >= RANK_MAX) batch.delete(doc.ref);
+          i += 1;
+        });
+        await batch.commit();
+      } catch (_) {
+        // 整理失敗は致命的ではない
+      }
     }
 
-    function clearAllScores() {
-      saveScores([]);
+    async function deleteScore(id) {
+      if (onlineMode && db) {
+        await db.collection(COLLECTION).doc(id).delete();
+        return;
+      }
+      saveScoresLocal(loadScoresLocal().filter((e) => e.id !== id));
+    }
+
+    async function clearAllScores() {
+      if (onlineMode && db) {
+        // 件数が多い場合は分割削除
+        while (true) {
+          const snap = await db.collection(COLLECTION).limit(40).get();
+          if (snap.empty) break;
+          const batch = db.batch();
+          snap.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+          if (snap.size < 40) break;
+        }
+        return;
+      }
+      saveScoresLocal([]);
     }
 
     function formatDate(ts) {
       if (!ts) return '';
       const d = new Date(ts);
-      const m = d.getMonth() + 1;
-      const day = d.getDate();
-      return m + '/' + day;
+      return (d.getMonth() + 1) + '/' + d.getDate();
     }
 
-    function renderRankList() {
-      const list = loadScores();
-      rankList.innerHTML = '';
+    async function renderRankList() {
+      if (rankBusy) return;
+      rankBusy = true;
+      rankList.innerHTML = '<div class="rank-empty">読み込み中…</div>';
+      updateRankModeNote();
 
-      if (!list.length) {
-        const empty = document.createElement('div');
-        empty.className = 'rank-empty';
-        empty.textContent = 'まだ記録がありません。クリアして登録しよう！';
-        rankList.appendChild(empty);
-        return;
-      }
+      try {
+        const list = await loadScores();
+        rankList.innerHTML = '';
 
-      list.forEach((e, i) => {
-        const row = document.createElement('div');
-        row.className = 'rank-row' + (i === 0 ? ' top1' : i === 1 ? ' top2' : i === 2 ? ' top3' : '');
-
-        const pos = document.createElement('div');
-        pos.className = 'rank-pos';
-        pos.textContent = (i + 1) + '位';
-
-        const name = document.createElement('div');
-        name.className = 'rank-name';
-        name.textContent = e.name;
-        name.title = formatDate(e.at);
-
-        const time = document.createElement('div');
-        time.className = 'rank-time';
-        time.textContent = formatTime(e.time);
-
-        row.appendChild(pos);
-        row.appendChild(name);
-        row.appendChild(time);
-
-        if (adminMode) {
-          const del = document.createElement('button');
-          del.type = 'button';
-          del.className = 'rank-del';
-          del.textContent = '削除';
-          del.addEventListener('click', () => {
-            if (!confirm(e.name + ' の ' + formatTime(e.time) + ' を削除しますか？')) return;
-            deleteScore(e.id);
-            renderRankList();
-          });
-          row.appendChild(del);
-        } else {
-          const spacer = document.createElement('div');
-          spacer.style.width = '1px';
-          row.appendChild(spacer);
+        if (!list.length) {
+          const empty = document.createElement('div');
+          empty.className = 'rank-empty';
+          empty.textContent = 'まだ記録がありません。クリアして登録しよう！';
+          rankList.appendChild(empty);
+          return;
         }
 
-        rankList.appendChild(row);
-      });
+        list.forEach((e, i) => {
+          const row = document.createElement('div');
+          row.className = 'rank-row' + (i === 0 ? ' top1' : i === 1 ? ' top2' : i === 2 ? ' top3' : '');
+
+          const pos = document.createElement('div');
+          pos.className = 'rank-pos';
+          pos.textContent = (i + 1) + '位';
+
+          const name = document.createElement('div');
+          name.className = 'rank-name';
+          name.textContent = e.name;
+          name.title = formatDate(e.at);
+
+          const time = document.createElement('div');
+          time.className = 'rank-time';
+          time.textContent = formatTime(e.time);
+
+          row.appendChild(pos);
+          row.appendChild(name);
+          row.appendChild(time);
+
+          if (adminMode) {
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'rank-del';
+            del.textContent = '削除';
+            del.addEventListener('click', async () => {
+              if (!confirm(e.name + ' の ' + formatTime(e.time) + ' を削除しますか？')) return;
+              try {
+                del.disabled = true;
+                await deleteScore(e.id);
+                await renderRankList();
+              } catch (err) {
+                alert('削除に失敗しました: ' + ((err && err.message) || err));
+                del.disabled = false;
+              }
+            });
+            row.appendChild(del);
+          } else {
+            const spacer = document.createElement('div');
+            spacer.style.width = '1px';
+            row.appendChild(spacer);
+          }
+
+          rankList.appendChild(row);
+        });
+      } catch (err) {
+        rankList.innerHTML = '';
+        const empty = document.createElement('div');
+        empty.className = 'rank-empty';
+        empty.textContent = '読み込み失敗: ' + ((err && err.message) || err);
+        rankList.appendChild(empty);
+      } finally {
+        rankBusy = false;
+      }
     }
 
     function setAdminMode(on) {
@@ -1443,13 +1621,24 @@
       }
     }
 
-    function submitPendingScore() {
+    async function submitPendingScore() {
       if (scoreSubmitted || pendingScore == null) return;
       const name = playerNameInput.value;
-      const { rank } = addScore(name, pendingScore);
-      scoreSubmitted = true;
-      nameForm.style.display = 'none';
-      winRankMsg.textContent = rank + '位 にランクイン！';
+      const timeVal = pendingScore;
+      btnSubmitScore.disabled = true;
+      winRankMsg.textContent = onlineMode ? 'ネットに登録中…' : '登録中…';
+      try {
+        const { rank } = await addScore(name, timeVal);
+        scoreSubmitted = true;
+        pendingScore = null;
+        nameForm.style.display = 'none';
+        winRankMsg.textContent = onlineMode
+          ? ('🌐 世界ランキング ' + rank + '位 に登録！')
+          : (rank + '位 にランクイン！');
+      } catch (err) {
+        winRankMsg.textContent = '登録失敗: ' + ((err && err.message) || err);
+        btnSubmitScore.disabled = false;
+      }
     }
 
     function skipPendingScore() {
@@ -1736,7 +1925,6 @@
     btnRankStart.addEventListener('click', () => openRankFrom('start'));
     btnRankWin.addEventListener('click', () => openRankFrom('win'));
     btnRank.addEventListener('click', () => {
-      // プレイ中も見られる
       openRankBoard(running ? 'play' : (won ? 'win' : 'start'));
       if (!running) startScreen.classList.add('hidden');
       if (won) winScreen.classList.add('hidden');
@@ -1744,6 +1932,10 @@
 
     btnRankClose.addEventListener('click', () => {
       closeRankBoard();
+    });
+
+    btnRankRefresh.addEventListener('click', () => {
+      renderRankList();
     });
 
     btnAdminLogin.addEventListener('click', () => {
@@ -1768,11 +1960,19 @@
       setAdminMode(false);
     });
 
-    btnClearAll.addEventListener('click', () => {
+    btnClearAll.addEventListener('click', async () => {
       if (!adminMode) return;
-      if (!confirm('ランキングをすべて削除します。よろしいですか？')) return;
-      clearAllScores();
-      renderRankList();
+      if (!confirm('ランキングをすべて削除します。よろしいですか？' +
+          (onlineMode ? '\n（ネット共有の全データが消えます）' : ''))) return;
+      try {
+        btnClearAll.disabled = true;
+        await clearAllScores();
+        await renderRankList();
+      } catch (err) {
+        alert('削除に失敗しました: ' + ((err && err.message) || err));
+      } finally {
+        btnClearAll.disabled = false;
+      }
     });
 
     // 起動時の案内
@@ -1800,6 +2000,7 @@
     setupPointer();
     setupKeyboard();
     setupVirtualStick();
+    initFirebase();
     resize();
     rebuildWorld(true);
     running = false;
