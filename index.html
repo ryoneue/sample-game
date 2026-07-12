@@ -571,6 +571,109 @@
       cursor: pointer;
       min-height: 40px;
     }
+
+    /* 難易度選択 */
+    .diff-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin: 4px 0 8px;
+      font-weight: 600;
+    }
+
+    .diff-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: min(100%, 300px);
+      margin: 0 auto 14px;
+    }
+
+    .diff-btn {
+      appearance: none;
+      border-radius: 14px;
+      border: 2px solid transparent;
+      padding: 12px 14px;
+      cursor: pointer;
+      text-align: left;
+      min-height: 52px;
+      transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+    }
+
+    .diff-btn:active { transform: scale(0.98); }
+
+    .diff-btn .diff-name {
+      display: block;
+      font-weight: 800;
+      font-size: 1.05rem;
+      margin-bottom: 2px;
+    }
+
+    .diff-btn .diff-desc {
+      display: block;
+      font-size: 0.75rem;
+      line-height: 1.35;
+      opacity: 0.9;
+    }
+
+    .diff-btn[data-diff="easy"] {
+      background: rgba(78, 205, 196, 0.18);
+      border-color: rgba(78, 205, 196, 0.55);
+      color: #9af0e8;
+    }
+    .diff-btn[data-diff="normal"] {
+      background: rgba(255, 217, 61, 0.14);
+      border-color: rgba(255, 217, 61, 0.5);
+      color: #ffe89a;
+    }
+    .diff-btn[data-diff="hard"] {
+      background: rgba(255, 107, 107, 0.16);
+      border-color: rgba(255, 107, 107, 0.55);
+      color: #ffb4b4;
+    }
+
+    .diff-btn.selected {
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35), 0 6px 20px rgba(0,0,0,0.35);
+    }
+
+    #hud-diff {
+      margin-left: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 999px;
+      vertical-align: middle;
+    }
+    #hud-diff.easy { background: rgba(78,205,196,0.25); color: #4ecdc4; }
+    #hud-diff.normal { background: rgba(255,217,61,0.22); color: #ffd93d; }
+    #hud-diff.hard { background: rgba(255,107,107,0.25); color: #ff8a8a; }
+
+    .rank-tabs {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
+      width: min(100%, 320px);
+      margin: 0 auto 12px;
+    }
+
+    .rank-tab {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(0,0,0,0.25);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      min-height: 36px;
+    }
+
+    .rank-tab.active {
+      color: #0f0f1a;
+      background: linear-gradient(135deg, #4ecdc4, #ffd93d);
+      border-color: transparent;
+    }
   </style>
 </head>
 <body>
@@ -578,6 +681,7 @@
     <div id="hud">
       <div class="hud-pill">
         <span id="timer">0.00s</span>
+        <span id="hud-diff" class="normal">NORMAL</span>
         <span id="best-time"></span>
       </div>
       <div class="hud-actions">
@@ -598,35 +702,54 @@
       </div>
 
       <!-- Start screen -->
-      <div id="start-screen" class="overlay">
+      <div id="start-screen" class="overlay scrollable">
         <h1>Marble Maze</h1>
-        <p class="subtitle">ボールを転がしてゴールの ★ へ！近道や壁バウンドもアリです。</p>
+        <p class="subtitle">ボールを転がしてゴールの ★ へ！難易度を選んでプレイ。</p>
         <ul class="instructions">
           <li><strong>スマホ:</strong> 端末を傾ける</li>
-          <li><strong>タッチ / マウス:</strong> 盤面をドラッグ（押し続ける）</li>
+          <li><strong>タッチ / マウス:</strong> 盤面をドラッグ</li>
           <li><strong>PC:</strong> 矢印キー / WASD</li>
           <li>黒い穴に落ちるとスタートに戻る</li>
         </ul>
+
+        <p class="diff-label">難易度を選択</p>
+        <div class="diff-row" id="diff-row">
+          <button type="button" class="diff-btn selected" data-diff="easy" id="diff-easy">
+            <span class="diff-name">Easy かんたん</span>
+            <span class="diff-desc">広い道・穴は少なめ。操作練習にぴったり</span>
+          </button>
+          <button type="button" class="diff-btn" data-diff="normal" id="diff-normal">
+            <span class="diff-name">Normal ふつう</span>
+            <span class="diff-desc">複数ルートあり。穴を見ながら進む</span>
+          </button>
+          <button type="button" class="diff-btn" data-diff="hard" id="diff-hard">
+            <span class="diff-name">Hard むずかしい</span>
+            <span class="diff-desc">安全な遠回り or 危険な近道 — どっちを取る？</span>
+          </button>
+        </div>
+
         <div class="btn-row">
           <button type="button" class="btn-primary" id="btn-start">プレイ</button>
         </div>
         <div class="btn-row">
           <button type="button" class="btn-secondary" id="btn-rank-start">🏆 ランキング</button>
+          <button type="button" class="btn-secondary" id="btn-menu" style="display:none;">難易度選択</button>
           <button type="button" class="btn-secondary" id="btn-tilt" style="display:none;">傾き操作を許可</button>
         </div>
         <p id="tilt-status"></p>
-        <p class="hint">クリアタイムはランキング登録可。Firebase設定後は全端末で共有されます（RANKING-SETUP.md）。</p>
+        <p class="hint">ランキングは難易度ごとに別ボードです。Firebase設定後は全端末で共有。</p>
       </div>
 
       <!-- Win screen -->
       <div id="win-screen" class="overlay hidden scrollable">
         <h1>クリア！</h1>
+        <div id="win-diff-label" style="color:var(--muted);font-size:0.9rem;margin-bottom:4px;"></div>
         <div id="win-time">0.00s</div>
         <div id="win-best"></div>
         <div id="win-rank-msg"></div>
 
         <div class="name-form" id="name-form">
-          <label for="player-name">ランキングに名前を登録</label>
+          <label for="player-name">この難易度のランキングに登録</label>
           <input id="player-name" type="text" maxlength="12" placeholder="なまえ（12文字まで）" autocomplete="nickname" />
           <div class="row">
             <button type="button" class="btn-primary" id="btn-submit-score">登録する</button>
@@ -636,14 +759,20 @@
 
         <div class="btn-row">
           <button type="button" class="btn-primary" id="btn-again">もう一度</button>
+          <button type="button" class="btn-secondary" id="btn-change-diff">難易度変更</button>
           <button type="button" class="btn-secondary" id="btn-rank-win">🏆 ランキング</button>
         </div>
-        <p class="hint">別ルートやバウンド技でタイム更新に挑戦！</p>
+        <p class="hint">Hardは安全ルートと危険ショートカットを試してみよう！</p>
       </div>
 
       <!-- Ranking board -->
       <div id="rank-screen" class="overlay hidden scrollable">
-        <h2 class="rank-title">🏆 クリアタイム ランキング</h2>
+        <h2 class="rank-title">🏆 ランキング</h2>
+        <div class="rank-tabs" id="rank-tabs">
+          <button type="button" class="rank-tab" data-diff="easy">Easy</button>
+          <button type="button" class="rank-tab active" data-diff="normal">Normal</button>
+          <button type="button" class="rank-tab" data-diff="hard">Hard</button>
+        </div>
         <p class="rank-note" id="rank-mode-note">読み込み中…</p>
         <div id="rank-list"></div>
 
@@ -702,10 +831,18 @@
     // 管理PIN（削除操作の簡易ロック。クライアント側のため完全秘密ではない）
     const ADMIN_PIN = '2468';
     const RANK_MAX = 30;           // 表示・保持する最大件数
-    const RANK_KEY = 'marble-maze-rank-v1';
-    const BEST_KEY = 'marble-maze-best-v1';
+    // 難易度ごとにキーを分ける（ローカル / Firestore とも）
+    const RANK_KEY_PREFIX = 'marble-maze-rank-v2-';
+    const BEST_KEY_PREFIX = 'marble-maze-best-v2-';
     const NAME_KEY = 'marble-maze-lastname';
-    const COLLECTION = 'scores';   // Firestore コレクション名
+    // Firestore: scores_easy / scores_normal / scores_hard
+    const COLLECTION_PREFIX = 'scores_';
+    const DIFF_IDS = ['easy', 'normal', 'hard'];
+    const DIFF_META = {
+      easy:   { id: 'easy',   label: 'Easy',   labelJa: 'かんたん', badge: 'EASY' },
+      normal: { id: 'normal', label: 'Normal', labelJa: 'ふつう',   badge: 'NORMAL' },
+      hard:   { id: 'hard',   label: 'Hard',   labelJa: 'むずかしい', badge: 'HARD' },
+    };
 
     /**
      * ★ ネット全体でランキングを共有するには Firebase を設定 ★
@@ -726,45 +863,110 @@
     };
 
     // ═══════════════════════════════════════════════════
-    //  LEVEL DATA (normalized 0–1 coords within playfield)
-    //  Easy to add levels: copy this object and swap walls/holes.
-    //  wall: { x, y, w, h }  — center + size in 0–1 space
+    //  LEVEL DATA (normalized 0–1)
+    //  wall: { x, y, w, h }  center + size
     //  hole: { x, y, r }
-    //  start / goal: { x, y }
+    //  start / goal: { x, y [, r] }
     // ═══════════════════════════════════════════════════
-    const LEVELS = [
-      {
-        name: 'Playground',
-        // Open center with islands of walls — multiple routes, shortcuts, bounce plays
+    const LEVELS = {
+      // ── Easy: 広い通路・穴2個・操作練習向け（目安 15〜40秒）
+      easy: {
+        id: 'easy',
+        name: 'Sunny Path',
         walls: [
-          // Border walls are added in code; these are internal obstacles
-          { x: 0.28, y: 0.22, w: 0.36, h: 0.05 },   // top bar (gap on right)
-          { x: 0.72, y: 0.22, w: 0.18, h: 0.05 },
-
-          { x: 0.18, y: 0.38, w: 0.06, h: 0.22 },   // left pillar
-          { x: 0.45, y: 0.42, w: 0.22, h: 0.05 },   // floating island
-          { x: 0.78, y: 0.40, w: 0.06, h: 0.28 },   // right tall wall (gap above/below)
-
-          { x: 0.32, y: 0.58, w: 0.28, h: 0.05 },   // mid bridge with side gaps
-          { x: 0.58, y: 0.58, w: 0.08, h: 0.05 },
-
-          { x: 0.22, y: 0.72, w: 0.05, h: 0.18 },   // lower left block
-          { x: 0.50, y: 0.78, w: 0.30, h: 0.05 },   // lower shelf (gap left of goal path)
-          { x: 0.78, y: 0.68, w: 0.18, h: 0.05 },   // right shelf
-
-          { x: 0.42, y: 0.32, w: 0.05, h: 0.12 },   // small vertical baffle
+          // 上の横壁：左に広い入口
+          { x: 0.58, y: 0.26, w: 0.55, h: 0.055 },
+          // 中央の柱（回り込みやすい）
+          { x: 0.38, y: 0.48, w: 0.08, h: 0.22 },
+          // 下段の棚：左にゴールへの広い隙間
+          { x: 0.62, y: 0.72, w: 0.48, h: 0.055 },
+          // 右下の小さな邪魔
+          { x: 0.78, y: 0.50, w: 0.06, h: 0.14 },
         ],
         holes: [
-          { x: 0.50, y: 0.30, r: 0.045 },  // near top island — risky mid path
-          { x: 0.32, y: 0.48, r: 0.042 },  // left of bridge
-          { x: 0.62, y: 0.48, r: 0.040 },  // right shortcut danger
-          { x: 0.45, y: 0.68, r: 0.048 },  // lower center trap
-          { x: 0.70, y: 0.82, r: 0.040 },  // near goal — last scare
+          { x: 0.72, y: 0.40, r: 0.036 }, // メイン動線から少し外す
+          { x: 0.28, y: 0.68, r: 0.036 },
+        ],
+        start: { x: 0.20, y: 0.12 },
+        goal:  { x: 0.80, y: 0.88, r: 0.062 },
+      },
+
+      // ── Normal: 複数ルート＋中程度の穴（目安 25〜70秒）
+      normal: {
+        id: 'normal',
+        name: 'Crossroads',
+        walls: [
+          { x: 0.28, y: 0.22, w: 0.36, h: 0.05 },
+          { x: 0.72, y: 0.22, w: 0.18, h: 0.05 },
+          { x: 0.18, y: 0.38, w: 0.06, h: 0.22 },
+          { x: 0.45, y: 0.42, w: 0.22, h: 0.05 },
+          { x: 0.78, y: 0.40, w: 0.06, h: 0.28 },
+          { x: 0.32, y: 0.58, w: 0.28, h: 0.05 },
+          { x: 0.58, y: 0.58, w: 0.08, h: 0.05 },
+          { x: 0.22, y: 0.72, w: 0.05, h: 0.18 },
+          { x: 0.50, y: 0.78, w: 0.30, h: 0.05 },
+          { x: 0.78, y: 0.68, w: 0.18, h: 0.05 },
+          { x: 0.42, y: 0.32, w: 0.05, h: 0.12 },
+        ],
+        holes: [
+          { x: 0.50, y: 0.30, r: 0.042 },
+          { x: 0.32, y: 0.48, r: 0.040 },
+          { x: 0.62, y: 0.48, r: 0.038 },
+          { x: 0.45, y: 0.68, r: 0.045 },
+          { x: 0.70, y: 0.82, r: 0.038 },
         ],
         start: { x: 0.18, y: 0.12 },
         goal:  { x: 0.82, y: 0.88, r: 0.055 },
       },
-    ];
+
+      // ── Hard: 二択ルート
+      //  ① 左＝安全だが遠回り（穴少なめ・壁ジグザグ）
+      //  ② 右＝短距離だが穴の回廊（ハイリスク・ハイリターン）
+      hard: {
+        id: 'hard',
+        name: 'Forked Fate',
+        walls: [
+          // スタート直下：中央に小さな分岐壁（左右どちらにも行ける）
+          { x: 0.50, y: 0.16, w: 0.10, h: 0.045 },
+
+          // 中央の背骨：左右ルートを長く分ける
+          { x: 0.48, y: 0.42, w: 0.065, h: 0.38 },
+
+          // —— 左・安全ルート（ジグザグで距離が伸びる）——
+          { x: 0.22, y: 0.28, w: 0.32, h: 0.045 }, // 左上棚 → さらに左 or 下へ
+          { x: 0.16, y: 0.46, w: 0.05, h: 0.24 },  // 左縦壁
+          { x: 0.28, y: 0.62, w: 0.28, h: 0.045 }, // 左中段（遠回り強制）
+          { x: 0.18, y: 0.80, w: 0.05, h: 0.18 },  // 左下縦
+          { x: 0.32, y: 0.88, w: 0.22, h: 0.045 }, // 底辺の迂回（ゴールへは右へ）
+
+          // —— 右・危険ショートカット（通路は開いているが穴だらけ）——
+          { x: 0.72, y: 0.30, w: 0.05, h: 0.16 },  // 細い柱（避けやすい）
+          { x: 0.82, y: 0.52, w: 0.22, h: 0.045 }, // 右中棚
+          { x: 0.64, y: 0.70, w: 0.05, h: 0.18 },  // ゴール手前の縦壁（狭い隙間）
+
+          // 底辺中央：安全ルートと危険ルートの合流ゲート
+          { x: 0.52, y: 0.86, w: 0.14, h: 0.04 },
+        ],
+        holes: [
+          // 危険ルート（右）のガントレット — 短いが精密操作必須
+          { x: 0.68, y: 0.22, r: 0.038 },
+          { x: 0.84, y: 0.36, r: 0.040 },
+          { x: 0.70, y: 0.44, r: 0.038 },
+          { x: 0.86, y: 0.62, r: 0.040 },
+          { x: 0.74, y: 0.74, r: 0.038 }, // ゴール直前の威嚇
+          { x: 0.88, y: 0.78, r: 0.036 },
+
+          // 安全ルート（左）— 少ないが油断すると落ちる
+          { x: 0.30, y: 0.48, r: 0.034 },
+          { x: 0.34, y: 0.74, r: 0.034 },
+
+          // 中央ハイブリッド狙いの罠
+          { x: 0.50, y: 0.64, r: 0.038 },
+        ],
+        start: { x: 0.50, y: 0.07 },
+        goal:  { x: 0.88, y: 0.90, r: 0.048 },
+      },
+    };
 
     // ═══════════════════════════════════════════════════
     //  DOM
@@ -802,9 +1004,14 @@
     const btnAdminLogin = document.getElementById('btn-admin-login');
     const btnAdminLogout = document.getElementById('btn-admin-logout');
     const btnClearAll = document.getElementById('btn-clear-all');
+    const btnChangeDiff = document.getElementById('btn-change-diff');
     const stickZone = document.getElementById('stick-zone');
     const stickKnob = document.getElementById('stick-knob');
     const controlHint = document.getElementById('control-hint');
+    const hudDiff = document.getElementById('hud-diff');
+    const winDiffLabel = document.getElementById('win-diff-label');
+    const rankTitle = document.querySelector('.rank-title');
+    const rankTabs = document.getElementById('rank-tabs');
 
     // ═══════════════════════════════════════════════════
     //  MATTER.JS ALIASES
@@ -816,7 +1023,9 @@
     // ═══════════════════════════════════════════════════
     let engine, world;
     let ball, walls = [], holes = [], goalBody = null;
-    let level = LEVELS[0];
+    let currentDiff = 'easy';       // プレイ中の難易度
+    let rankViewDiff = 'easy';     // ランキング表示中の難易度
+    let level = LEVELS.easy;
     let W = 0, H = 0, scale = 1, wallThick = 18;
     let ballRadius = 12;
 
@@ -824,7 +1033,7 @@
     let won = false;
     let startTime = 0;
     let elapsed = 0;
-    let bestTime = loadBest();
+    let bestTime = null;
     let pendingScore = null;
     let scoreSubmitted = false;
     let adminMode = false;
@@ -853,17 +1062,33 @@
     let shake = 0;
 
     // ═══════════════════════════════════════════════════
-    //  UTIL / STORAGE（オンライン or ローカル）
+    //  UTIL / STORAGE（オンライン or ローカル・難易度別）
     // ═══════════════════════════════════════════════════
-    function loadBest() {
+    function normalizeDiff(d) {
+      return DIFF_IDS.indexOf(d) >= 0 ? d : 'normal';
+    }
+
+    function rankKey(diff) {
+      return RANK_KEY_PREFIX + normalizeDiff(diff);
+    }
+
+    function bestKey(diff) {
+      return BEST_KEY_PREFIX + normalizeDiff(diff);
+    }
+
+    function collectionName(diff) {
+      return COLLECTION_PREFIX + normalizeDiff(diff);
+    }
+
+    function loadBest(diff) {
       try {
-        const v = localStorage.getItem(BEST_KEY);
+        const v = localStorage.getItem(bestKey(diff || currentDiff));
         return v ? parseFloat(v) : null;
       } catch (_) { return null; }
     }
 
-    function saveBest(t) {
-      try { localStorage.setItem(BEST_KEY, String(t)); } catch (_) {}
+    function saveBest(t, diff) {
+      try { localStorage.setItem(bestKey(diff || currentDiff), String(t)); } catch (_) {}
     }
 
     function formatTime(t) {
@@ -871,7 +1096,23 @@
     }
 
     function updateBestDisplay() {
+      bestTime = loadBest(currentDiff);
       bestEl.textContent = bestTime != null ? 'ベスト ' + formatTime(bestTime) : '';
+      if (hudDiff) {
+        const m = DIFF_META[currentDiff] || DIFF_META.normal;
+        hudDiff.textContent = m.badge;
+        hudDiff.className = currentDiff;
+      }
+    }
+
+    function setDifficulty(diff) {
+      currentDiff = normalizeDiff(diff);
+      level = LEVELS[currentDiff] || LEVELS.normal;
+      updateBestDisplay();
+      // 選択UIの見た目
+      document.querySelectorAll('.diff-btn').forEach((btn) => {
+        btn.classList.toggle('selected', btn.getAttribute('data-diff') === currentDiff);
+      });
     }
 
     function nX(v) { return v * W; }
@@ -928,12 +1169,22 @@
 
     function updateRankModeNote() {
       if (!rankModeNote) return;
+      const meta = DIFF_META[rankViewDiff] || DIFF_META.normal;
+      const board = '【' + meta.label + ' / ' + meta.labelJa + '】';
       if (onlineMode && onlineReady) {
-        rankModeNote.textContent = '🌐 ネット共有ランキング（世界中・全端末で共通）— 管理PINで削除可';
+        rankModeNote.textContent = board + ' 🌐 ネット共有ボード（難易度ごと独立）';
       } else if (onlineError) {
-        rankModeNote.textContent = '⚠ オンライン接続失敗: ' + onlineError + ' → この端末のみの記録を表示';
+        rankModeNote.textContent = board + ' ⚠ 接続失敗 → 端末内のこの難易度のみ表示';
       } else {
-        rankModeNote.textContent = '📱 端末内ランキング（FIREBASE_CONFIG 未設定）。ネット共有は RANKING-SETUP.md を参照';
+        rankModeNote.textContent = board + ' 📱 端末内（難易度ごと別保存）';
+      }
+      if (rankTitle) {
+        rankTitle.textContent = '🏆 ' + meta.label + ' ランキング';
+      }
+      if (rankTabs) {
+        rankTabs.querySelectorAll('.rank-tab').forEach((tab) => {
+          tab.classList.toggle('active', tab.getAttribute('data-diff') === rankViewDiff);
+        });
       }
     }
 
@@ -951,9 +1202,9 @@
         .slice(0, RANK_MAX);
     }
 
-    function loadScoresLocal() {
+    function loadScoresLocal(diff) {
       try {
-        const raw = localStorage.getItem(RANK_KEY);
+        const raw = localStorage.getItem(rankKey(diff || rankViewDiff));
         if (!raw) return [];
         return normalizeScores(JSON.parse(raw));
       } catch (_) {
@@ -961,38 +1212,38 @@
       }
     }
 
-    function saveScoresLocal(list) {
+    function saveScoresLocal(list, diff) {
       try {
-        localStorage.setItem(RANK_KEY, JSON.stringify(normalizeScores(list)));
+        localStorage.setItem(rankKey(diff || rankViewDiff), JSON.stringify(normalizeScores(list)));
       } catch (_) {}
     }
 
-    async function loadScores() {
+    async function loadScores(diff) {
+      const d = normalizeDiff(diff || rankViewDiff);
       if (onlineMode && db) {
         try {
-          const snap = await db.collection(COLLECTION)
+          const snap = await db.collection(collectionName(d))
             .orderBy('time', 'asc')
             .limit(RANK_MAX)
             .get();
           const list = [];
           snap.forEach((doc) => {
-            const d = doc.data() || {};
+            const data = doc.data() || {};
             list.push({
               id: doc.id,
-              name: d.name,
-              time: d.time,
-              at: d.at || 0,
+              name: data.name,
+              time: data.time,
+              at: data.at || 0,
             });
           });
           return normalizeScores(list);
         } catch (e) {
           onlineError = (e && e.message) ? e.message : '読込エラー';
           updateRankModeNote();
-          // フォールバック
-          return loadScoresLocal();
+          return loadScoresLocal(d);
         }
       }
-      return loadScoresLocal();
+      return loadScoresLocal(d);
     }
 
     function loadLastName() {
@@ -1003,42 +1254,44 @@
       try { localStorage.setItem(NAME_KEY, name); } catch (_) {}
     }
 
-    /** @returns {Promise<{ entry: object, rank: number }>} */
-    async function addScore(name, time) {
+    /** 現在プレイ中の難易度ボードへ登録 */
+    async function addScore(name, time, diff) {
+      const d = normalizeDiff(diff || currentDiff);
       const clean = (name || 'プレイヤー').trim().slice(0, 12) || 'プレイヤー';
       const at = Date.now();
       saveLastName(clean);
 
       if (onlineMode && db) {
-        const ref = await db.collection(COLLECTION).add({
+        const ref = await db.collection(collectionName(d)).add({
           name: clean,
           time: Number(time),
           at: at,
+          difficulty: d,
         });
-        // 古い余分な記録を整理（RANK_MAX を超えた分）
-        await pruneOnlineScores();
-        const list = await loadScores();
+        await pruneOnlineScores(d);
+        const list = await loadScores(d);
         const rank = list.findIndex((e) => e.id === ref.id) + 1;
         return {
           entry: { id: ref.id, name: clean, time: Number(time), at: at },
           rank: rank > 0 ? rank : list.length,
+          difficulty: d,
         };
       }
 
       const entry = { id: uid(), name: clean, time: Number(time), at: at };
-      const list = loadScoresLocal();
+      const list = loadScoresLocal(d);
       list.push(entry);
       const trimmed = normalizeScores(list);
-      saveScoresLocal(trimmed);
+      saveScoresLocal(trimmed, d);
       const rank = trimmed.findIndex((e) => e.id === entry.id) + 1;
-      return { entry, rank: rank > 0 ? rank : trimmed.length };
+      return { entry, rank: rank > 0 ? rank : trimmed.length, difficulty: d };
     }
 
-    async function pruneOnlineScores() {
+    async function pruneOnlineScores(diff) {
       if (!db) return;
+      const d = normalizeDiff(diff || rankViewDiff);
       try {
-        // 上位 RANK_MAX だけ残すため、多めに取得して超過分を削除
-        const snap = await db.collection(COLLECTION)
+        const snap = await db.collection(collectionName(d))
           .orderBy('time', 'asc')
           .limit(RANK_MAX + 40)
           .get();
@@ -1050,24 +1303,24 @@
           i += 1;
         });
         await batch.commit();
-      } catch (_) {
-        // 整理失敗は致命的ではない
-      }
+      } catch (_) {}
     }
 
-    async function deleteScore(id) {
+    async function deleteScore(id, diff) {
+      const d = normalizeDiff(diff || rankViewDiff);
       if (onlineMode && db) {
-        await db.collection(COLLECTION).doc(id).delete();
+        await db.collection(collectionName(d)).doc(id).delete();
         return;
       }
-      saveScoresLocal(loadScoresLocal().filter((e) => e.id !== id));
+      saveScoresLocal(loadScoresLocal(d).filter((e) => e.id !== id), d);
     }
 
-    async function clearAllScores() {
+    /** 表示中の難易度ボードだけ全削除 */
+    async function clearAllScores(diff) {
+      const d = normalizeDiff(diff || rankViewDiff);
       if (onlineMode && db) {
-        // 件数が多い場合は分割削除
         while (true) {
-          const snap = await db.collection(COLLECTION).limit(40).get();
+          const snap = await db.collection(collectionName(d)).limit(40).get();
           if (snap.empty) break;
           const batch = db.batch();
           snap.forEach((doc) => batch.delete(doc.ref));
@@ -1076,7 +1329,7 @@
         }
         return;
       }
-      saveScoresLocal([]);
+      saveScoresLocal([], d);
     }
 
     function formatDate(ts) {
@@ -1092,13 +1345,13 @@
       updateRankModeNote();
 
       try {
-        const list = await loadScores();
+        const list = await loadScores(rankViewDiff);
         rankList.innerHTML = '';
 
         if (!list.length) {
           const empty = document.createElement('div');
           empty.className = 'rank-empty';
-          empty.textContent = 'まだ記録がありません。クリアして登録しよう！';
+          empty.textContent = 'この難易度の記録はまだありません';
           rankList.appendChild(empty);
           return;
         }
@@ -1130,10 +1383,11 @@
             del.className = 'rank-del';
             del.textContent = '削除';
             del.addEventListener('click', async () => {
-              if (!confirm(e.name + ' の ' + formatTime(e.time) + ' を削除しますか？')) return;
+              if (!confirm('[' + (DIFF_META[rankViewDiff] || {}).label + '] ' +
+                  e.name + ' の ' + formatTime(e.time) + ' を削除しますか？')) return;
               try {
                 del.disabled = true;
-                await deleteScore(e.id);
+                await deleteScore(e.id, rankViewDiff);
                 await renderRankList();
               } catch (err) {
                 alert('削除に失敗しました: ' + ((err && err.message) || err));
@@ -1170,6 +1424,8 @@
 
     function openRankBoard(from) {
       rankReturnTo = from || 'start';
+      // プレイ中・クリア後は現在の難易度タブを開く
+      rankViewDiff = normalizeDiff(currentDiff);
       rankScreen.classList.remove('hidden');
       renderRankList();
     }
@@ -1632,20 +1888,28 @@
       pendingScore = elapsed;
       scoreSubmitted = false;
 
+      const meta = DIFF_META[currentDiff] || DIFF_META.normal;
       let isNewBest = false;
-      if (bestTime == null || elapsed < bestTime) {
+      const prevBest = loadBest(currentDiff);
+      if (prevBest == null || elapsed < prevBest) {
+        saveBest(elapsed, currentDiff);
         bestTime = elapsed;
-        saveBest(bestTime);
         isNewBest = true;
+      } else {
+        bestTime = prevBest;
       }
 
+      if (winDiffLabel) {
+        winDiffLabel.textContent = meta.label + '（' + meta.labelJa + '）';
+      }
       winTimeEl.textContent = formatTime(elapsed);
       winBestEl.textContent = isNewBest
-        ? '★ 自己ベスト更新！'
-        : (bestTime != null ? '自己ベスト: ' + formatTime(bestTime) : '');
+        ? '★ ' + meta.label + ' 自己ベスト更新！'
+        : (bestTime != null ? meta.label + ' 自己ベスト: ' + formatTime(bestTime) : '');
       winRankMsg.textContent = '';
       nameForm.style.display = '';
       playerNameInput.value = loadLastName();
+      btnSubmitScore.disabled = false;
       updateBestDisplay();
 
       spawnConfetti();
@@ -1663,16 +1927,20 @@
       if (scoreSubmitted || pendingScore == null) return;
       const name = playerNameInput.value;
       const timeVal = pendingScore;
+      const diffAtSubmit = currentDiff;
+      const meta = DIFF_META[diffAtSubmit] || DIFF_META.normal;
       btnSubmitScore.disabled = true;
-      winRankMsg.textContent = onlineMode ? 'ネットに登録中…' : '登録中…';
+      winRankMsg.textContent = onlineMode
+        ? (meta.label + ' ボードに登録中…')
+        : '登録中…';
       try {
-        const { rank } = await addScore(name, timeVal);
+        const { rank } = await addScore(name, timeVal, diffAtSubmit);
         scoreSubmitted = true;
         pendingScore = null;
         nameForm.style.display = 'none';
         winRankMsg.textContent = onlineMode
-          ? ('🌐 世界ランキング ' + rank + '位 に登録！')
-          : (rank + '位 にランクイン！');
+          ? ('🌐 ' + meta.label + ' 世界ランキング ' + rank + '位！')
+          : (meta.label + ' ' + rank + '位 にランクイン！');
       } catch (err) {
         winRankMsg.textContent = '登録失敗: ' + ((err && err.message) || err);
         btnSubmitScore.disabled = false;
@@ -1919,10 +2187,18 @@
     // ═══════════════════════════════════════════════════
     //  UI EVENTS
     // ═══════════════════════════════════════════════════
+    document.querySelectorAll('.diff-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setDifficulty(btn.getAttribute('data-diff'));
+      });
+    });
+
     btnStart.addEventListener('click', () => {
+      // 選択中の難易度で開始
+      const selected = document.querySelector('.diff-btn.selected');
+      if (selected) setDifficulty(selected.getAttribute('data-diff'));
       startScreen.classList.add('hidden');
       rankScreen.classList.add('hidden');
-      // レイアウト確定後に開始（オーバーレイ非表示直後のサイズ0対策）
       requestAnimationFrame(() => {
         resize();
         fullReset();
@@ -1938,6 +2214,19 @@
       rankScreen.classList.add('hidden');
       fullReset();
     });
+
+    if (btnChangeDiff) {
+      btnChangeDiff.addEventListener('click', () => {
+        won = false;
+        running = false;
+        winScreen.classList.add('hidden');
+        rankScreen.classList.add('hidden');
+        hud.classList.remove('visible');
+        stickZone.classList.remove('visible');
+        controlHint.classList.remove('visible');
+        startScreen.classList.remove('hidden');
+      });
+    }
 
     btnReset.addEventListener('click', () => {
       if (!running && !won) return;
@@ -1973,7 +2262,7 @@
     btnRankWin.addEventListener('click', () => openRankFrom('win'));
     btnRank.addEventListener('click', () => {
       openRankBoard(running ? 'play' : (won ? 'win' : 'start'));
-      if (!running) startScreen.classList.add('hidden');
+      if (!running && !won) startScreen.classList.add('hidden');
       if (won) winScreen.classList.add('hidden');
     });
 
@@ -1984,6 +2273,15 @@
     btnRankRefresh.addEventListener('click', () => {
       renderRankList();
     });
+
+    if (rankTabs) {
+      rankTabs.querySelectorAll('.rank-tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          rankViewDiff = normalizeDiff(tab.getAttribute('data-diff'));
+          renderRankList();
+        });
+      });
+    }
 
     btnAdminLogin.addEventListener('click', () => {
       const pin = (adminPinInput.value || '').trim();
@@ -2009,11 +2307,12 @@
 
     btnClearAll.addEventListener('click', async () => {
       if (!adminMode) return;
-      if (!confirm('ランキングをすべて削除します。よろしいですか？' +
-          (onlineMode ? '\n（ネット共有の全データが消えます）' : ''))) return;
+      const meta = DIFF_META[rankViewDiff] || DIFF_META.normal;
+      if (!confirm(meta.label + ' ランキングをすべて削除します。よろしいですか？' +
+          (onlineMode ? '\n（この難易度のネット共有データのみ消えます）' : ''))) return;
       try {
         btnClearAll.disabled = true;
-        await clearAllScores();
+        await clearAllScores(rankViewDiff);
         await renderRankList();
       } catch (err) {
         alert('削除に失敗しました: ' + ((err && err.message) || err));
@@ -2048,6 +2347,7 @@
     setupKeyboard();
     setupVirtualStick();
     initFirebase();
+    setDifficulty('easy');
 
     // レイアウト確定を待ってからワールド構築
     function bootWorld() {
