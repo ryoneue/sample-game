@@ -710,17 +710,19 @@
     /**
      * ★ ネット全体でランキングを共有するには Firebase を設定 ★
      * 手順は同フォルダの RANKING-SETUP.md を参照。
+     * ※ 変数名は必ず FIREBASE_CONFIG のままにしてください
+     *   （Firebase コンソールの firebaseConfig をコピーしたら、名前を揃える）
      * apiKey / projectId が入っていると自動でオンライン共有モードになります。
      * 空のままだと、この端末だけの localStorage モードです。
      */
-    const firebaseConfig = {
-      apiKey: "AIzaSyC1ug8ZDWlGyl27BoFLEqIdW6SHs25HoAY",
-      authDomain: "maze-sample-game.firebaseapp.com",
-      projectId: "maze-sample-game",
-      storageBucket: "maze-sample-game.firebasestorage.app",
-      messagingSenderId: "718223944581",
-      appId: "1:718223944581:web:48842109a591ef6c5e32ec",
-      measurementId: "G-JERRFRYVGL"
+    const FIREBASE_CONFIG = {
+      apiKey: 'AIzaSyC1ug8ZDWlGyl27BoFLEqIdW6SHs25HoAY',
+      authDomain: 'maze-sample-game.firebaseapp.com',
+      projectId: 'maze-sample-game',
+      storageBucket: 'maze-sample-game.firebasestorage.app',
+      messagingSenderId: '718223944581',
+      appId: '1:718223944581:web:48842109a591ef6c5e32ec',
+      measurementId: 'G-JERRFRYVGL',
     };
 
     // ═══════════════════════════════════════════════════
@@ -880,7 +882,17 @@
     }
 
     function isFirebaseConfigured() {
-      return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
+      // 変数欠落でもゲーム全体が落ちないようにする
+      try {
+        return !!(
+          typeof FIREBASE_CONFIG !== 'undefined' &&
+          FIREBASE_CONFIG &&
+          FIREBASE_CONFIG.apiKey &&
+          FIREBASE_CONFIG.projectId
+        );
+      } catch (_) {
+        return false;
+      }
     }
 
     function initFirebase() {
