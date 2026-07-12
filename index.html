@@ -1180,23 +1180,37 @@
     function resize() {
       const rect = wrap.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-      W = Math.floor(rect.width);
-      H = Math.floor(rect.height);
-      canvas.width = Math.floor(W * dpr);
-      canvas.height = Math.floor(H * dpr);
+      let nextW = Math.floor(rect.width);
+      let nextH = Math.floor(rect.height);
+
+      // レイアウト未確定で 0 になることがある → フォールバック
+      if (nextW < 32 || nextH < 32) {
+        const vw = Math.max(320, Math.min(window.innerWidth || 360, 520));
+        const vh = Math.max(400, Math.min(window.innerHeight || 640, Math.floor(vw * 14 / 9)));
+        nextW = Math.floor(vw);
+        nextH = Math.floor(vh);
+      }
+
+      const sizeChanged = nextW !== W || nextH !== H;
+      W = nextW;
+      H = nextH;
+      canvas.width = Math.max(1, Math.floor(W * dpr));
+      canvas.height = Math.max(1, Math.floor(H * dpr));
       canvas.style.width = W + 'px';
       canvas.style.height = H + 'px';
 
       const ctx = canvas.getContext('2d');
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // Scale-dependent sizes
       scale = Math.min(W, H) / 360;
       wallThick = Math.max(14, 16 * scale);
       ballRadius = Math.max(10, 12 * scale);
 
-      // Rebuild physics world to match new pixel sizes
-      if (engine) rebuildWorld(false);
+      // サイズが変わったときだけワールド再構築（0×0 のまま放置しない）
+      if (engine && sizeChanged && W >= 32 && H >= 32) {
+        rebuildWorld(false);
+      }
     }
 
     // ═══════════════════════════════════════════════════
@@ -1212,20 +1226,31 @@
     }
 
     function makeWall(cx, cy, w, h) {
-      return Bodies.rectangle(cx, cy, w, h, {
+      const ww = Math.max(4, w);
+      const hh = Math.max(4, h);
+      const cham = Math.min(4, Math.min(ww, hh) * 0.12);
+      return Bodies.rectangle(cx, cy, ww, hh, {
         isStatic: true,
         restitution: PHYSICS.wallRestitution,
         friction: PHYSICS.wallFriction,
         label: 'wall',
-        chamfer: { radius: Math.min(6, Math.min(w, h) * 0.15) },
+        chamfer: cham >= 1 ? { radius: cham } : undefined,
       });
     }
 
     function rebuildWorld(resetTimer) {
+      // サイズ未確定なら先に測る
+      if (W < 32 || H < 32) resize();
+      if (W < 32 || H < 32) {
+        // 次フレームで再試行
+        requestAnimationFrame(() => rebuildWorld(resetTimer));
+        return;
+      }
+
       clearWorld();
       if (!engine) {
         engine = Engine.create({
-          gravity: { x: 0, y: 0 }, // gravity driven by tilt / drag
+          gravity: { x: 0, y: 0 },
           enableSleeping: false,
         });
         world = engine.world;
@@ -1233,34 +1258,31 @@
 
       const bodies = [];
 
-      // Outer border (thick so ball can't escape)
+      // Outer border
       const t = wallThick;
-      bodies.push(makeWall(W / 2, t / 2, W, t));           // top
-      bodies.push(makeWall(W / 2, H - t / 2, W, t));       // bottom
-      bodies.push(makeWall(t / 2, H / 2, t, H));           // left
-      bodies.push(makeWall(W - t / 2, H / 2, t, H));       // right
+      bodies.push(makeWall(W / 2, t / 2, W, t));
+      bodies.push(makeWall(W / 2, H - t / 2, W, t));
+      bodies.push(makeWall(t / 2, H / 2, t, H));
+      bodies.push(makeWall(W - t / 2, H / 2, t, H));
 
-      // Internal walls from level data
+      // Internal walls
       level.walls.forEach((w) => {
         const body = makeWall(nX(w.x), nY(w.y), nX(w.w), nY(w.h));
         walls.push(body);
         bodies.push(body);
       });
 
-      // Holes are sensor-like: we check distance each frame (no physics body needed)
       holes = level.holes.map((h) => ({
         x: nX(h.x),
         y: nY(h.y),
         r: Math.max(10, nX(h.r)),
       }));
 
-      // Goal sensor (static, non-colliding visual body optional)
       const gx = nX(level.goal.x);
       const gy = nY(level.goal.y);
       const gr = Math.max(14, nX(level.goal.r));
       goalBody = { x: gx, y: gy, r: gr };
 
-      // Ball — Matter.js computes mass/inertia from density + radius
       const sx = nX(level.start.x);
       const sy = nY(level.start.y);
       ball = Bodies.circle(sx, sy, ballRadius, {
@@ -1297,10 +1319,13 @@
       winScreen.classList.add('hidden');
       elapsed = 0;
       startTime = performance.now();
+      // プレイ開始時に必ずサイズ再計測（真っ青な空盤面バグ対策）
+      resize();
       rebuildWorld(true);
       if (engine) {
         engine.gravity.x = 0;
         engine.gravity.y = 0;
+        if (engine.gravity.scale == null) engine.gravity.scale = 0.001;
       }
       running = true;
       hud.classList.add('visible');
@@ -1859,19 +1884,24 @@
     function loop(now) {
       requestAnimationFrame(loop);
 
-      // Cap delta for stability (tab background, etc.)
-      const dt = Math.min(32, now - lastFrame || 16);
       lastFrame = now;
 
-      if (running && !won && engine) {
-        applyControls();
-        Engine.update(engine, 1000 / 60);
-        checkHolesAndGoal();
-        elapsed = (now - startTime) / 1000;
-        timerEl.textContent = formatTime(elapsed);
-      }
+      try {
+        if (running && !won && engine && ball) {
+          applyControls();
+          Engine.update(engine, 1000 / 60);
+          checkHolesAndGoal();
+          elapsed = (now - startTime) / 1000;
+          timerEl.textContent = formatTime(elapsed);
+        }
 
-      if (engine) draw();
+        if (engine && W >= 32 && H >= 32) draw();
+      } catch (err) {
+        // 1フレームの例外でゲーム全体が止まらないようにする
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('[marble-maze]', err);
+        }
+      }
     }
 
     // ═══════════════════════════════════════════════════
@@ -1880,8 +1910,12 @@
     btnStart.addEventListener('click', () => {
       startScreen.classList.add('hidden');
       rankScreen.classList.add('hidden');
-      fullReset();
-      requestTiltPermission().catch(() => {});
+      // レイアウト確定後に開始（オーバーレイ非表示直後のサイズ0対策）
+      requestAnimationFrame(() => {
+        resize();
+        fullReset();
+        requestTiltPermission().catch(() => {});
+      });
     });
 
     btnTilt.addEventListener('click', () => {
@@ -2002,10 +2036,33 @@
     setupKeyboard();
     setupVirtualStick();
     initFirebase();
-    resize();
-    rebuildWorld(true);
-    running = false;
-    updateBestDisplay();
+
+    // レイアウト確定を待ってからワールド構築
+    function bootWorld() {
+      resize();
+      if (W < 32 || H < 32) {
+        requestAnimationFrame(bootWorld);
+        return;
+      }
+      rebuildWorld(true);
+      running = false;
+      updateBestDisplay();
+    }
+    bootWorld();
+
+    // ラップのサイズ変化を監視（スマホ回転・初回レイアウト）
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        const prevW = W, prevH = H;
+        resize();
+        if ((W !== prevW || H !== prevH) && engine && W >= 32 && H >= 32) {
+          // resize() 内で再構築済みのこともあるが、保険
+          if (!ball) rebuildWorld(false);
+        }
+      });
+      ro.observe(wrap);
+    }
+
     requestAnimationFrame(loop);
 
   })();
