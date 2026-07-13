@@ -18,8 +18,7 @@
   ║  4. Visit https://YOURUSER.github.io/YOURREPO/                   ║
   ║                                                                  ║
   ║  HOW TO PLAY                                                     ║
-  ║  • Phone: tilt the device to roll the marble.                    ║
-  ║  • Touch / mouse: drag on the board to push the ball.            ║
+  ║  • Control: tilt the smartphone only (no touch/mouse/keys).      ║
   ║  • Avoid dark holes (they reset you). Reach the glowing goal!    ║
   ║  • Try shortcuts, bounces, and risky routes — experiment!        ║
   ║                                                                  ║
@@ -157,10 +156,8 @@
       display: block;
       width: 100%;
       height: 100%;
-      cursor: grab;
+      cursor: default;
     }
-
-    canvas:active { cursor: grabbing; }
 
     /* ── Overlays (start / win) ──────────────────────── */
     .overlay {
@@ -655,16 +652,15 @@
     <div id="canvas-wrap">
       <canvas id="game"></canvas>
 
-      <div id="control-hint">端末を傾ける / 盤面をドラッグしてボールを転がそう</div>
+      <div id="control-hint">スマホを傾けてボールを転がそう</div>
 
       <!-- Start screen -->
       <div id="start-screen" class="overlay scrollable">
         <h1>Marble Maze</h1>
         <p class="subtitle">ボールを転がしてゴールの ★ へ！難易度を選んでプレイ。</p>
         <ul class="instructions">
-          <li><strong>基本:</strong> スマホを傾ける</li>
-          <li><strong>補助:</strong> 盤面をドラッグ（指で押したまま動かす）</li>
-          <li><strong>PC:</strong> ドラッグ または 矢印キー / WASD</li>
+          <li><strong>操作:</strong> スマートフォンの傾きのみ</li>
+          <li>スワイプ・マウス・キーでは動きません</li>
           <li>黒い穴に落ちるとスタートに戻る</li>
           <li>タイマーはボールが動き始めた瞬間から計測</li>
         </ul>
@@ -767,14 +763,9 @@
     //  PHYSICS TUNING — change these for different feel
     // ═══════════════════════════════════════════════════
     const PHYSICS = {
-      // Matter.js の gravity.scale 相当。傾き・キー・スティックで方向を変える
+      // 傾きのみで重力方向を変える
       gravityStrength: 1.15,
       tiltMax: 1.0,
-      // ドラッグ時に目標速度へ寄せる強さ（0〜1に近いほど機敏）
-      dragSteer: 0.14,
-      dragMaxSpeed: 9.5,
-      // キー操作の目標速度寄与
-      keyMaxSpeed: 8.5,
       // タイマー開始判定（この速さ以上で「動き始めた」）
       moveStartSpeed: 0.22,
       ballRestitution: 0.48,
@@ -1003,15 +994,11 @@
     let onlineReady = false;
     let onlineError = '';
 
-    // Input（傾き + ドラッグ + キー。仮想スティックは無し）
+    // Input（スマートフォンの傾きのみ）
     let tiltEnabled = false;
     let tiltActive = false;
     let tiltBeta = 0;
     let tiltGamma = 0;
-    let pointerDown = false;
-    let pointerX = 0, pointerY = 0;
-
-    const keys = Object.create(null);
 
     let goalPulse = 0;
     let shake = 0;
@@ -1574,7 +1561,7 @@
     }
 
     // ═══════════════════════════════════════════════════
-    //  CONTROLS — 傾き / ドラッグ / キー / 仮想スティック
+    //  CONTROLS — スマートフォンの傾きのみ
     // ═══════════════════════════════════════════════════
     function clamp(v, lo, hi) {
       return Math.max(lo, Math.min(hi, v));
@@ -1584,7 +1571,6 @@
       // beta: 前後, gamma: 左右
       if (event.beta != null) tiltBeta = event.beta;
       if (event.gamma != null) tiltGamma = event.gamma;
-      // 値が実際に届いたら傾き操作を有効化
       if (event.beta != null || event.gamma != null) {
         tiltActive = true;
       }
@@ -1603,102 +1589,25 @@
             btnTilt.style.display = 'none';
             return true;
           }
-          tiltStatus.textContent = '傾きが拒否されました。ドラッグやスティックで操作できます。';
+          tiltStatus.textContent = '傾きが拒否されました。設定からモーション許可を有効にしてください。';
           return false;
         } catch (e) {
-          tiltStatus.textContent = '傾きを使えません。ドラッグやスティックで操作してください。';
+          tiltStatus.textContent = '傾きセンサーを利用できません。スマートフォンで開いてください。';
           return false;
         }
       }
       if (typeof DeviceOrientationEvent !== 'undefined') {
         window.addEventListener('deviceorientation', applyOrientation, true);
         tiltEnabled = true;
-        tiltStatus.textContent = '傾き対応端末なら傾けて遊べます。PCはドラッグ / キー操作です。';
+        tiltStatus.textContent = '傾き操作を使用します。スマートフォンを傾けてください。';
         return true;
       }
-      tiltStatus.textContent = '傾きセンサーなし — ドラッグ / キー / スティックで操作';
+      tiltStatus.textContent = 'この端末では傾き操作が使えません。スマートフォンでプレイしてください。';
       return false;
     }
 
-    function eventPoint(e) {
-      // Pointer / Mouse / Touch を共通化
-      if (e.touches && e.touches.length) {
-        return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-      if (e.changedTouches && e.changedTouches.length) {
-        return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
-      }
-      return { x: e.clientX, y: e.clientY };
-    }
-
-    function toCanvasLocal(e) {
-      const r = canvas.getBoundingClientRect();
-      const p = eventPoint(e);
-      // CSS 表示サイズ → 論理座標（physics と同じ W×H）
-      const sx = W / r.width;
-      const sy = H / r.height;
-      return {
-        x: (p.x - r.left) * sx,
-        y: (p.y - r.top) * sy,
-      };
-    }
-
-    function setupPointer() {
-      const onDown = (e) => {
-        if (!running || won) return;
-        e.preventDefault();
-        pointerDown = true;
-        const p = toCanvasLocal(e);
-        pointerX = p.x;
-        pointerY = p.y;
-      };
-
-      const onMove = (e) => {
-        if (!pointerDown) return;
-        e.preventDefault();
-        const p = toCanvasLocal(e);
-        pointerX = p.x;
-        pointerY = p.y;
-      };
-
-      const onUp = () => {
-        pointerDown = false;
-      };
-
-      // Pointer Events（マウス・タッチ両対応・座標が安定）
-      canvas.addEventListener('pointerdown', onDown);
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-      window.addEventListener('pointercancel', onUp);
-
-      // 古い環境向けフォールバック
-      canvas.addEventListener('touchstart', onDown, { passive: false });
-      canvas.addEventListener('touchmove', onMove, { passive: false });
-      canvas.addEventListener('touchend', onUp);
-      canvas.addEventListener('touchcancel', onUp);
-    }
-
-    function setupKeyboard() {
-      const codeMap = {
-        ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
-        KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
-      };
-      window.addEventListener('keydown', (e) => {
-        const k = codeMap[e.code];
-        if (!k) return;
-        keys[k] = true;
-        e.preventDefault();
-      });
-      window.addEventListener('keyup', (e) => {
-        const k = codeMap[e.code];
-        if (!k) return;
-        keys[k] = false;
-      });
-    }
-
     /**
-     * 毎フレームの操作入力を Matter の重力 + 速度ステアに反映。
-     * スマホ: 傾き / ドラッグ。PC: ドラッグ / キー。
+     * 傾き → Matter の重力方向のみ（タッチ／マウス／キーは無効）
      */
     function applyControls() {
       if (!ball || !running || won || !engine) return;
@@ -1706,30 +1615,16 @@
       let gx = 0;
       let gy = 0;
 
-      // 1) 端末の傾き → 重力方向（メイン操作）
       if (tiltEnabled && tiltActive) {
         const neutralBeta = 35;
         let tx = clamp(tiltGamma / 25, -PHYSICS.tiltMax, PHYSICS.tiltMax);
         let ty = clamp((tiltBeta - neutralBeta) / 25, -PHYSICS.tiltMax, PHYSICS.tiltMax);
         if (Math.abs(tx) < 0.05) tx = 0;
         if (Math.abs(ty) < 0.05) ty = 0;
-        gx += tx;
-        gy += ty;
+        gx = tx;
+        gy = ty;
       }
 
-      // 2) キーボード（PC 補助）
-      let kx = 0, ky = 0;
-      if (keys.left) kx -= 1;
-      if (keys.right) kx += 1;
-      if (keys.up) ky -= 1;
-      if (keys.down) ky += 1;
-      if (kx !== 0 || ky !== 0) {
-        const len = Math.hypot(kx, ky) || 1;
-        gx += (kx / len) * 0.95;
-        gy += (ky / len) * 0.95;
-      }
-
-      // 重力は Matter 標準経路
       const gLen = Math.hypot(gx, gy);
       if (gLen > PHYSICS.tiltMax) {
         gx = (gx / gLen) * PHYSICS.tiltMax;
@@ -1738,22 +1633,21 @@
       engine.gravity.x = gx * PHYSICS.gravityStrength;
       engine.gravity.y = gy * PHYSICS.gravityStrength;
       engine.gravity.scale = 0.001;
+    }
 
-      // 3) ドラッグ: ポインタ方向へ速度を寄せる（タッチ／マウス補助）
-      if (pointerDown) {
-        const dx = pointerX - ball.position.x;
-        const dy = pointerY - ball.position.y;
-        const dist = Math.hypot(dx, dy) || 1;
-        const speed = Math.min(dist / (55 * scale), 1) * PHYSICS.dragMaxSpeed * scale;
-        const tvx = (dx / dist) * speed;
-        const tvy = (dy / dist) * speed;
-        const v = ball.velocity;
-        const s = PHYSICS.dragSteer;
-        Body.setVelocity(ball, {
-          x: v.x + (tvx - v.x) * s,
-          y: v.y + (tvy - v.y) * s,
-        });
-      }
+    /** スクロール防止のみ（ゲーム入力には使わない） */
+    function setupTouchGuard() {
+      const block = (e) => {
+        if (e.target === canvas || wrap.contains(e.target)) {
+          // UI ボタン上は許可
+          if (e.target.closest && e.target.closest('button, input, a, label')) return;
+          e.preventDefault();
+        }
+      };
+      canvas.addEventListener('touchstart', block, { passive: false });
+      canvas.addEventListener('touchmove', block, { passive: false });
+      // マウスは何もしない（カーソルは表示のみ）
+      canvas.style.cursor = 'default';
     }
 
     // ═══════════════════════════════════════════════════
@@ -1922,22 +1816,6 @@
 
       // Ball
       if (ball) drawBall(ctx, ball);
-
-      // Drag indicator
-      if (pointerDown && ball && running && !won) {
-        ctx.strokeStyle = 'rgba(78, 205, 196, 0.45)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 6]);
-        ctx.beginPath();
-        ctx.moveTo(ball.position.x, ball.position.y);
-        ctx.lineTo(pointerX, pointerY);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(78, 205, 196, 0.5)';
-        ctx.beginPath();
-        ctx.arc(pointerX, pointerY, 8, 0, Math.PI * 2);
-        ctx.fill();
-      }
 
       ctx.restore();
     }
@@ -2237,15 +2115,15 @@
       }
     });
 
-    // 起動時の案内
+    // 起動時の案内（傾き専用）
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
       btnTilt.style.display = 'inline-block';
-      tiltStatus.textContent = '「プレイ」後、必要なら「傾き操作を許可」を押してください。';
+      tiltStatus.textContent = 'iPhone では「プレイ」後に傾き（モーション）の許可が必要です。';
     } else if (typeof DeviceOrientationEvent === 'undefined') {
-      tiltStatus.textContent = 'PC: 盤面ドラッグ または 矢印キー / WASD で操作';
+      tiltStatus.textContent = 'PC ではプレイできません。傾きセンサー付きのスマートフォンで開いてください。';
     } else {
-      tiltStatus.textContent = 'スマホは傾き、PCはドラッグやキーで操作できます。';
+      tiltStatus.textContent = '操作はスマートフォンの傾きのみです。';
     }
 
     // ═══════════════════════════════════════════════════
@@ -2259,8 +2137,7 @@
       if (e.target === canvas || wrap.contains(e.target)) e.preventDefault();
     }, { passive: false });
 
-    setupPointer();
-    setupKeyboard();
+    setupTouchGuard();
     initFirebase();
     setDifficulty('easy');
 
