@@ -54,7 +54,7 @@
     }
 
     /* ゲーム盤面はスクロール防止。入力欄は除外 */
-    body, canvas, #stick-zone, #hud, .overlay {
+    body, canvas, #hud, .overlay {
       touch-action: none;
       user-select: none;
       -webkit-user-select: none;
@@ -295,48 +295,10 @@
       min-height: 1.2em;
     }
 
-    /* 画面上の仮想スティック（傾きが使えない端末向け） */
-    #stick-zone {
-      display: none;
-      position: absolute;
-      left: 50%;
-      bottom: 18px;
-      transform: translateX(-50%);
-      width: 120px;
-      height: 120px;
-      z-index: 12;
-      touch-action: none;
-      pointer-events: auto;
-    }
-
-    #stick-zone.visible { display: block; }
-
-    #stick-base {
-      position: absolute;
-      inset: 0;
-      border-radius: 50%;
-      background: rgba(26, 26, 46, 0.55);
-      border: 2px solid rgba(78, 205, 196, 0.45);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-    }
-
-    #stick-knob {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 48px;
-      height: 48px;
-      margin: -24px 0 0 -24px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #4ecdc4, #2a9d8f);
-      box-shadow: 0 2px 10px rgba(78, 205, 196, 0.5);
-      pointer-events: none;
-    }
-
     #control-hint {
       display: none;
       position: absolute;
-      bottom: 148px; /* 仮想スティックの上 */
+      bottom: 14px;
       left: 0;
       right: 0;
       text-align: center;
@@ -693,23 +655,18 @@
     <div id="canvas-wrap">
       <canvas id="game"></canvas>
 
-      <div id="control-hint">ボールの近くをドラッグ / 矢印キー / 下のスティック</div>
-
-      <!-- 仮想スティック -->
-      <div id="stick-zone" aria-label="移動スティック">
-        <div id="stick-base"></div>
-        <div id="stick-knob"></div>
-      </div>
+      <div id="control-hint">端末を傾ける / 盤面をドラッグしてボールを転がそう</div>
 
       <!-- Start screen -->
       <div id="start-screen" class="overlay scrollable">
         <h1>Marble Maze</h1>
         <p class="subtitle">ボールを転がしてゴールの ★ へ！難易度を選んでプレイ。</p>
         <ul class="instructions">
-          <li><strong>スマホ:</strong> 端末を傾ける</li>
-          <li><strong>タッチ / マウス:</strong> 盤面をドラッグ</li>
-          <li><strong>PC:</strong> 矢印キー / WASD</li>
+          <li><strong>基本:</strong> スマホを傾ける</li>
+          <li><strong>補助:</strong> 盤面をドラッグ（指で押したまま動かす）</li>
+          <li><strong>PC:</strong> ドラッグ または 矢印キー / WASD</li>
           <li>黒い穴に落ちるとスタートに戻る</li>
+          <li>タイマーはボールが動き始めた瞬間から計測</li>
         </ul>
 
         <p class="diff-label">難易度を選択</p>
@@ -793,8 +750,8 @@
           <button type="button" class="btn-secondary" id="btn-rank-refresh">更新</button>
           <button type="button" class="btn-primary" id="btn-rank-close">閉じる</button>
         </div>
-        <p class="hint">ネット共有は Firebase 設定が必要です（RANKING-SETUP.md）。管理PIN既定: 2468</p>
-      </div>
+        <p class="hint">ネット共有は Firebase 設定が必要です（RANKING-SETUP.md）。</p>
+      </div>s
     </div>
   </div>
 
@@ -816,9 +773,10 @@
       // ドラッグ時に目標速度へ寄せる強さ（0〜1に近いほど機敏）
       dragSteer: 0.14,
       dragMaxSpeed: 9.5,
-      // キー / 仮想スティックの目標速度
+      // キー操作の目標速度寄与
       keyMaxSpeed: 8.5,
-      stickMaxSpeed: 8.5,
+      // タイマー開始判定（この速さ以上で「動き始めた」）
+      moveStartSpeed: 0.22,
       ballRestitution: 0.48,
       ballFriction: 0.001,
       ballFrictionAir: 0.02,
@@ -1005,8 +963,6 @@
     const btnAdminLogout = document.getElementById('btn-admin-logout');
     const btnClearAll = document.getElementById('btn-clear-all');
     const btnChangeDiff = document.getElementById('btn-change-diff');
-    const stickZone = document.getElementById('stick-zone');
-    const stickKnob = document.getElementById('stick-knob');
     const controlHint = document.getElementById('control-hint');
     const hudDiff = document.getElementById('hud-diff');
     const winDiffLabel = document.getElementById('win-diff-label');
@@ -1033,6 +989,7 @@
     let won = false;
     let startTime = 0;
     let elapsed = 0;
+    let timerStarted = false; // true になってからタイム計測
     let bestTime = null;
     let pendingScore = null;
     let scoreSubmitted = false;
@@ -1046,7 +1003,7 @@
     let onlineReady = false;
     let onlineError = '';
 
-    // Input
+    // Input（傾き + ドラッグ + キー。仮想スティックは無し）
     let tiltEnabled = false;
     let tiltActive = false;
     let tiltBeta = 0;
@@ -1055,8 +1012,6 @@
     let pointerX = 0, pointerY = 0;
 
     const keys = Object.create(null);
-    let stickX = 0, stickY = 0;
-    let stickPointerId = null;
 
     let goalPulse = 0;
     let shake = 0;
@@ -1567,8 +1522,10 @@
 
       if (resetTimer) {
         elapsed = 0;
-        startTime = performance.now();
+        startTime = 0;
+        timerStarted = false;
         won = false;
+        if (timerEl) timerEl.textContent = formatTime(0);
       }
     }
 
@@ -1580,13 +1537,16 @@
       Body.setVelocity(ball, { x: 0, y: 0 });
       Body.setAngularVelocity(ball, 0);
       shake = 6;
+      // 穴落ちし後もタイマーは継続（計測開始済みならそのまま）
     }
 
     function fullReset() {
       won = false;
       winScreen.classList.add('hidden');
       elapsed = 0;
-      startTime = performance.now();
+      startTime = 0;
+      timerStarted = false;
+      if (timerEl) timerEl.textContent = formatTime(0);
       // プレイ開始時に必ずサイズ再計測（真っ青な空盤面バグ対策）
       resize();
       rebuildWorld(true);
@@ -1597,9 +1557,20 @@
       }
       running = true;
       hud.classList.add('visible');
-      stickZone.classList.add('visible');
       controlHint.classList.add('visible');
       updateBestDisplay();
+    }
+
+    /** ボールが初めて動き始めたらタイマー開始 */
+    function maybeStartTimer(now) {
+      if (timerStarted || !ball || !running || won) return;
+      const v = ball.velocity;
+      const speed = Math.hypot(v.x || 0, v.y || 0);
+      if (speed >= PHYSICS.moveStartSpeed) {
+        timerStarted = true;
+        startTime = now || performance.now();
+        elapsed = 0;
+      }
     }
 
     // ═══════════════════════════════════════════════════
@@ -1675,8 +1646,6 @@
     function setupPointer() {
       const onDown = (e) => {
         if (!running || won) return;
-        // スティック操作中はキャンバスドラッグしない
-        if (stickPointerId != null) return;
         e.preventDefault();
         pointerDown = true;
         const p = toCanvasLocal(e);
@@ -1727,66 +1696,9 @@
       });
     }
 
-    function setupVirtualStick() {
-      const maxR = 36; // ノブの最大移動半径(px)
-
-      const setKnob = (nx, ny) => {
-        stickKnob.style.transform = 'translate(' + (nx * maxR) + 'px,' + (ny * maxR) + 'px)';
-      };
-
-      const updateFromEvent = (e) => {
-        const r = stickZone.getBoundingClientRect();
-        const p = eventPoint(e);
-        const cx = r.left + r.width / 2;
-        const cy = r.top + r.height / 2;
-        let dx = p.x - cx;
-        let dy = p.y - cy;
-        const len = Math.hypot(dx, dy) || 1;
-        const clipped = Math.min(len, maxR);
-        dx = (dx / len) * clipped;
-        dy = (dy / len) * clipped;
-        stickX = dx / maxR;
-        stickY = dy / maxR;
-        setKnob(stickX, stickY);
-      };
-
-      const onDown = (e) => {
-        if (!running || won) return;
-        e.preventDefault();
-        e.stopPropagation();
-        stickPointerId = e.pointerId != null ? e.pointerId : 'touch';
-        try { stickZone.setPointerCapture(e.pointerId); } catch (_) {}
-        updateFromEvent(e);
-      };
-
-      const onMove = (e) => {
-        if (stickPointerId == null) return;
-        if (e.pointerId != null && e.pointerId !== stickPointerId) return;
-        e.preventDefault();
-        updateFromEvent(e);
-      };
-
-      const onUp = (e) => {
-        if (stickPointerId == null) return;
-        if (e.pointerId != null && e.pointerId !== stickPointerId) return;
-        stickPointerId = null;
-        stickX = 0;
-        stickY = 0;
-        setKnob(0, 0);
-      };
-
-      stickZone.addEventListener('pointerdown', onDown);
-      stickZone.addEventListener('pointermove', onMove);
-      stickZone.addEventListener('pointerup', onUp);
-      stickZone.addEventListener('pointercancel', onUp);
-      stickZone.addEventListener('touchstart', onDown, { passive: false });
-      stickZone.addEventListener('touchmove', onMove, { passive: false });
-      stickZone.addEventListener('touchend', onUp);
-    }
-
     /**
      * 毎フレームの操作入力を Matter の重力 + 速度ステアに反映。
-     * 傾きが弱い / 無い端末でもドラッグ・キー・スティックで確実に動く。
+     * スマホ: 傾き / ドラッグ。PC: ドラッグ / キー。
      */
     function applyControls() {
       if (!ball || !running || won || !engine) return;
@@ -1794,7 +1706,7 @@
       let gx = 0;
       let gy = 0;
 
-      // 1) 端末の傾き → 重力方向
+      // 1) 端末の傾き → 重力方向（メイン操作）
       if (tiltEnabled && tiltActive) {
         const neutralBeta = 35;
         let tx = clamp(tiltGamma / 25, -PHYSICS.tiltMax, PHYSICS.tiltMax);
@@ -1805,7 +1717,7 @@
         gy += ty;
       }
 
-      // 2) キーボード
+      // 2) キーボード（PC 補助）
       let kx = 0, ky = 0;
       if (keys.left) kx -= 1;
       if (keys.right) kx += 1;
@@ -1817,13 +1729,7 @@
         gy += (ky / len) * 0.95;
       }
 
-      // 3) 仮想スティック
-      if (stickX !== 0 || stickY !== 0) {
-        gx += stickX * 0.95;
-        gy += stickY * 0.95;
-      }
-
-      // 重力は Matter 標準経路（質量に比例し安定）
+      // 重力は Matter 標準経路
       const gLen = Math.hypot(gx, gy);
       if (gLen > PHYSICS.tiltMax) {
         gx = (gx / gLen) * PHYSICS.tiltMax;
@@ -1833,12 +1739,11 @@
       engine.gravity.y = gy * PHYSICS.gravityStrength;
       engine.gravity.scale = 0.001;
 
-      // 4) ドラッグ: ポインタ方向へ速度を寄せる（反応が分かりやすい）
+      // 3) ドラッグ: ポインタ方向へ速度を寄せる（タッチ／マウス補助）
       if (pointerDown) {
         const dx = pointerX - ball.position.x;
         const dy = pointerY - ball.position.y;
         const dist = Math.hypot(dx, dy) || 1;
-        // 近いほど弱く、離すほど上限まで加速
         const speed = Math.min(dist / (55 * scale), 1) * PHYSICS.dragMaxSpeed * scale;
         const tvx = (dx / dist) * speed;
         const tvy = (dy / dist) * speed;
@@ -1884,7 +1789,12 @@
       if (won) return;
       won = true;
       running = false;
-      elapsed = (performance.now() - startTime) / 1000;
+      // タイマー未開始でゴールは実質ないが、安全側で 0 扱い
+      if (timerStarted && startTime > 0) {
+        elapsed = (performance.now() - startTime) / 1000;
+      } else {
+        elapsed = 0;
+      }
       pendingScore = elapsed;
       scoreSubmitted = false;
 
@@ -1915,7 +1825,6 @@
       spawnConfetti();
       winScreen.classList.remove('hidden');
       hud.classList.remove('visible');
-      stickZone.classList.remove('visible');
       controlHint.classList.remove('visible');
       if (engine) {
         engine.gravity.x = 0;
@@ -2170,9 +2079,16 @@
         if (running && !won && engine && ball) {
           applyControls();
           Engine.update(engine, 1000 / 60);
+          // 物理更新後に「初めて動いたか」を判定してから計測
+          maybeStartTimer(now);
+          if (timerStarted) {
+            elapsed = (now - startTime) / 1000;
+            timerEl.textContent = formatTime(elapsed);
+          } else {
+            elapsed = 0;
+            timerEl.textContent = formatTime(0);
+          }
           checkHolesAndGoal();
-          elapsed = (now - startTime) / 1000;
-          timerEl.textContent = formatTime(elapsed);
         }
 
         if (engine && W >= 32 && H >= 32) draw();
@@ -2219,10 +2135,10 @@
       btnChangeDiff.addEventListener('click', () => {
         won = false;
         running = false;
+        timerStarted = false;
         winScreen.classList.add('hidden');
         rankScreen.classList.add('hidden');
         hud.classList.remove('visible');
-        stickZone.classList.remove('visible');
         controlHint.classList.remove('visible');
         startScreen.classList.remove('hidden');
       });
@@ -2345,7 +2261,6 @@
 
     setupPointer();
     setupKeyboard();
-    setupVirtualStick();
     initFirebase();
     setDifficulty('easy');
 
